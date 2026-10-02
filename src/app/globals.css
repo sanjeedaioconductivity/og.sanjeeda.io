@@ -1,0 +1,377 @@
+@import url("https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700;900&display=swap");
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* shadcn/ui design tokens. Consumed only by shadcn components.
+   NOTE: the portal-wide `body { @apply bg-background text-foreground }` and
+   `* { @apply border-border }` that shadcn init normally injects are
+   intentionally omitted to avoid restyling every existing page.
+
+   ⚠ DARK-THEME TOKEN SOURCE — PLACEHOLDER, PENDING DESIGN SIGN-OFF.
+   Sprint 2 §3 flags that no approved hex/token spec exists for the dark theme
+   anywhere in the docs. The prototype's styles.css is a LIGHT palette that
+   SCR-008 explicitly says is wrong, so it must not be used as the source of
+   truth. The `.dark` values below are PLACEHOLDER tokens derived from the
+   prototype's existing accent hues — teal #00a7a4, blue #0b6ff3,
+   amber #ff8a00, red #ee4f61 — recomposed on a navy background (brand
+   darkBlue #060b2d ≈ 232 77% 10%) to match the FRS "dark theme, navy/blue
+   palette" description and its semantic colors (amber = warning/negative,
+   green/teal = positive). Replace with the approved token set once Jamil
+   signs off; do NOT treat these hex values as final.
+   The `:root` (light) values are shadcn's zinc defaults, kept only so the
+   light/dark/system toggle has a working light state — also placeholder. */
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+    --primary: 240 5.9% 10%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    /* Semantic extras (FRS): amber = warning/negative, green/teal = positive.
+       Sprint 6: now mapped in tailwind.config.ts as `warning` / `success`.
+       The light-mode amber is darkened from the prototype's #ff8a00 — that hue at
+       50% lightness only reaches ~2.2:1 against white, so it fails as text or as a
+       border on a light surface. SCR-005 needs amber to read as a *signal* on
+       "Risky" and "Yes", not as decoration. The dark theme keeps the brighter
+       prototype hue, which has plenty of contrast on navy.
+       The `-subtle` pair backs tinted chip/card fills where solid amber would shout. */
+    --warning: 28 92% 36%;
+    --warning-foreground: 0 0% 100%;
+    --warning-subtle: 33 100% 96%;
+    --success: 168 84% 28%;
+    --success-foreground: 0 0% 100%;
+    --success-subtle: 168 70% 95%;
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 240 5.9% 10%;
+    --radius: 0.5rem;
+  }
+
+  /* PLACEHOLDER dark theme — navy/blue, pending design sign-off (see note above). */
+  .dark {
+    --background: 211 65% 34%;        /* brand blue #003f81 + 12% white = #1f5690 */
+    --foreground: 210 40% 96%;
+    --card: 231 45% 14%;
+    --card-foreground: 210 40% 96%;
+    --popover: 231 45% 14%;
+    --popover-foreground: 210 40% 96%;
+    --primary: 214 91% 50%;           /* prototype blue #0b6ff3 */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 231 40% 20%;
+    --secondary-foreground: 210 40% 96%;
+    --muted: 231 30% 22%;
+    --muted-foreground: 214 20% 72%;
+    --accent: 179 100% 33%;           /* prototype teal #00a7a4 */
+    --accent-foreground: 0 0% 100%;
+    --destructive: 351 82% 62%;       /* prototype red #ee4f61 */
+    --destructive-foreground: 0 0% 100%;
+    --warning: 33 100% 50%;           /* prototype amber #ff8a00 */
+    --warning-foreground: 0 0% 100%;
+    --warning-subtle: 33 60% 16%;
+    --success: 179 100% 33%;          /* teal, positive signals */
+    --success-foreground: 0 0% 100%;
+    --success-subtle: 179 50% 14%;
+    --border: 231 30% 24%;
+    --input: 231 30% 24%;
+    --ring: 214 91% 55%;
+  }
+}
+
+/* Layout: the fixed site header's height, declared once. The bar, the spacer
+   that pushes page content below it, and every sticky sidebar/toolbar that
+   pins beneath it read this — they used to be three hand-typed numbers in
+   three files, and changing one opened a gap under the header until the other
+   two were found. Tailwind exposes it as h-header / top-header / pt-header
+   (spacing.header in tailwind.config.ts). */
+:root {
+  --header-h: 4rem; /* 64px */
+}
+
+/* ===========================================================================
+   Brand tokens — formerly "palettes": the site used to let a visitor pick
+   between this (Modern) and a second, pinker "Playful" set via a picker in the
+   header. The picker, its provider, the Playful token block, the Playful
+   Google font and the `playful:`/`playful-dark:` Tailwind variants were all
+   removed — this is the one set of values left, permanently.
+
+   Colours are RGB triplets, not hex, so Tailwind's opacity modifiers keep
+   working (`border-brand-ink/10` → `rgb(var(--brand-ink) / 0.1)`). The
+   Tailwind side is `colors.brand` in tailwind.config.ts.
+
+   Values are the hex codes originally typed straight into the header and
+   homepage, before this token layer existed — this file changes nothing about
+   how the site looks.
+
+   Tokens:
+     ink            headings / body text
+     accent         primary callout — the "New" sticker, hero bubbles, blobs
+     accent-soft    tint behind an accent icon
+     accent-bright  the accent readable on a dark surface
+     blue           secondary — icon tiles, dashed rules
+     blue-soft      tint behind a blue icon
+     blue-bright    the blue readable on a dark surface
+     sky            large hero surfaces
+     paper          warm page background
+     font-brand     body font stack
+   =========================================================================== */
+:root {
+  --brand-ink: 11 22 63;             /* #0b163f */
+  --brand-accent: 232 52 68;         /* #e83444 */
+  --brand-accent-soft: 255 240 232;  /* #fff0e8 */
+  --brand-accent-bright: 255 112 122;/* #ff707a */
+  --brand-blue: 23 70 181;           /* #1746b5 */
+  --brand-blue-soft: 233 239 255;    /* #e9efff */
+  --brand-blue-bright: 142 180 255;  /* #8eb4ff */
+  --brand-sky: 65 131 212;           /* #4183d4 */
+  --brand-paper: 251 247 241;        /* #fbf7f1 */
+  --font-brand: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+* {
+  padding: 0;
+  margin: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-brand, "Roboto", sans-serif);
+  background-color:#efefef;
+}
+
+/* Dark theme surface. Light mode is intentionally left exactly as-is (#efefef);
+   the site only gains dark-mode overrides so existing pages don't regress.
+   (OfferGuide Sprint 2 — theme rollout.) */
+.dark body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+/* OfferGuide paints its own surface (white in light mode, a lighter bluish slate in
+   dark — see offerguide/layout.tsx's OFFERGUIDE_DARK_SURFACE) on a wrapper INSIDE
+   body, while body itself keeps the portal's #efefef / mid-blue. Any moment the
+   wrapper doesn't cover the viewport — a rubber-band overscroll, a step transition's
+   short loading state, a horizontal overflow on the right — the canvas shows through
+   as a band in the other colour (QA report A5, "blue band along the bottom/right
+   edge"). Match the canvas to the module while an OfferGuide page is mounted.
+   Literal values, not var(--background): the token is re-pointed on the
+   wrapper, so on <body> it still holds the portal colour. Keep this HSL triple
+   identical to `--background` in OFFERGUIDE_DARK_SURFACE or the band comes back. */
+html:has(.og-surface) body {
+  background-color: #ffffff;
+}
+.dark:has(.og-surface) body {
+  background-color: hsl(230 35% 18%);
+}
+
+/* Browser autofill forces a white background + dark text via UA !important
+   styles that normal CSS can't override. In dark mode, repaint autofilled
+   fields to match the theme so they aren't jarring white boxes. */
+.dark input:-webkit-autofill,
+.dark input:-webkit-autofill:hover,
+.dark input:-webkit-autofill:focus,
+.dark textarea:-webkit-autofill,
+.dark select:-webkit-autofill {
+  -webkit-text-fill-color: hsl(var(--foreground));
+  -webkit-box-shadow: 0 0 0 1000px hsl(var(--card)) inset;
+  caret-color: hsl(var(--foreground));
+  transition: background-color 9999s ease-out 0s;
+}
+
+.header {
+  text-align: center;
+  padding: 20px;
+}
+
+.container {
+  width: 85%;
+  margin: auto;
+}
+
+.flexSB {
+  display: flex;
+  justify-content: space-between;
+}
+
+.card {
+  width: 30%;
+  padding: 20px;
+  background-color: white;
+  border-radius: 10px;
+  box-shadow: 0 4px 8px rgb(0, 0, 0, 0.1);
+  margin-bottom: 20px; 
+}
+
+a {
+  text-decoration: none;
+}
+
+li {
+  list-style-type: none;
+}
+
+.row {
+  width: 50%;
+}
+
+.hero .row {
+  width: 100%;
+}
+
+#heading {
+  text-align: center;
+  padding: 40px 0;
+}
+
+#heading h3 {
+  font-weight: 600;
+  letter-spacing: 1px;
+  color: #1eb2a6;
+  text-transform: uppercase;
+}
+
+#heading h1 {
+  font-size: 45px;
+  margin: 20px 0;
+  text-transform: capitalize;
+}
+
+p {
+  line-height: 30px;
+  font-size: 18px;
+}
+
+
+h2 {
+  font-size: small; /* Adjusted */
+}
+
+@keyframes slideInOut {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(10px);
+  }
+}
+
+/* Add this new CSS rule */
+.scale-filled-portion {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background-color: var(--red);
+  border-radius: 9999px;
+}
+.circle-indicator {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1rem;
+  height: 1rem;
+  background-color: white;
+  border: 2px solid black;
+  border-radius: 50%;
+  box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
+}
+
+.circle-indicator-position {
+  left: 0;
+}
+
+.circle-indicator-position[data-position] {
+  left: calc(var(--indicator-position) * 1%);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+.services-swiper .swiper-pagination {
+  bottom: 0 !important;
+}
+
+.services-swiper .swiper-pagination-bullet {
+  width: 7px;
+  height: 7px;
+  background: rgba(255, 255, 255, 0.38);
+  opacity: 1;
+  transition: width 220ms ease, background-color 220ms ease;
+}
+
+.services-swiper .swiper-pagination-bullet-active {
+  width: 28px;
+  border-radius: 999px;
+  background: #ff5c68;
+}
+
+.service-prev.swiper-button-disabled,
+.service-next.swiper-button-disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+@media screen and (max-width: 768px) {
+ 
+}
+
+/* Print / PDF helpers */
+@media print {
+.no-print {
+  display: none !important;
+}
+
+.page-break {
+  break-before: page;
+  page-break-before: always;
+}
+
+/* Ensure colors render in PDFs */
+*{
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
+
+/* Remove screen background when printing */
+body {
+  background: white !important;
+}
+}
+
+/* On screen, don't actually create blank space */
+.page-break {
+  display: none;
+}
+
+@media print {
+.page-break {
+  display: block;
+}
+}

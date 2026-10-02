@@ -1,0 +1,463 @@
+body {
+    /* Routed through the palette token (globals.css). This used to name the
+       Urdu faces, which are loaded by next/font as --font-jameel and applied via
+       .font-urdu — not installed system-wide — so body text silently fell back
+       to the OS sans-serif, and the Roboto in globals.css never applied. */
+    font-family: var(--font-brand, sans-serif);
+    line-height: 1.6;
+    /* padding: 20px; */
+    background-color: whitesmoke;
+    color: #333;
+    gap:20px
+  }
+  
+ /* Submit and Restart Buttons */
+  #submit-btn,
+  .restart-button {
+    display: block;
+    width: 50%; 
+      margin-left: auto;
+    margin-right: auto;
+   padding: 10px 15px;
+    background-color: #3498db;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    font-size: 1.2em;
+  font-weight: bold;
+    cursor: pointer;
+    /* margin-top: -50px; */
+    transition: background-color 0.3s ease;
+  }
+  
+  #submit-btn:hover,
+  .restart-button:hover {
+    background-color: #2980b9;
+  }
+
+.download-button {
+  margin-top: 20px;
+  margin-left: 70px;
+  background-color: #5db320;
+  color: white;
+  padding: 6px 10px;
+  border-radius: 5px;
+  font-weight: bold;
+}
+
+  .app-container {
+    /* --- Centering Properties --- */
+    max-width: 800px; /* Or 900px, etc. MUST have a max-width */
+    margin-left: auto;
+    margin-right: auto;
+  
+    /* Optional: Add top/bottom margin */
+    /* margin-top: 20px; */
+    margin-bottom: 200px;
+  
+    /* --- Other styles (Make sure these are also present) --- */
+    /* background: #fff; */
+    padding: 140px 40px 50px 40px; /* Adjust padding as needed */
+    border-radius: 8px;
+    box-shadow: 0 2px 15px rgba(0,0,0,0.05);
+    /* background-color: #e2e5e9; */
+  }
+ 
+
+  #quiz-container h1, #results-container h2{
+    text-align: center;
+    color: #ff0505;
+    margin-bottom: 50px;
+    margin-top: 20px;
+  }
+  
+.quiz-subheading {
+  margin-top: -55px;
+}
+
+.question-block:last-of-type {
+    border-bottom: none;    margin-bottom: 0;
+  }
+  
+.question-block p {
+    /* margin-bottom: 10px; */
+    font-size: 14px;
+    /* font-weight: 500; */
+    color: #34495e;
+  }
+  
+.answer-label {
+  display: block;
+  /* background: linear-gradient(to right, pink, #00838F); */
+  color: black;
+  margin: 3px;
+  padding: 5px;
+  border-radius: 4px;
+  font-size: small;
+  cursor: pointer;
+  /* border: 1px solid rgba(46, 49, 146, 1); */
+  /* transition: background-color 0.3s ease, color 0.3s ease, transform 0.2s ease; */
+}
+
+/* ✅ Hover effect (invert + subtle lift) */
+.answer-label:hover {
+  background: whitesmoke;
+  color: black;
+  /* transform: scale(1.02); */
+}
+
+  .answer-label input[type="radio"] {
+    margin-right: 10px;
+    accent-color: #3498db; /* Style the radio button itself */
+  }
+  
+  /* Styling for Likert Scale */
+  .likert-scale {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 5px ;
+    padding: 5px;
+    background-color: rgb(46 49 146 / var(--tw-bg-opacity, 1));
+     border-radius: 4px;
+    border: 1px solid #dee2e6;
+  }
+  
+  .likert-scale span {
+    font-size:small;
+    color: white;
+    text-align: center;
+    flex: 1;
+  }
+  
+  .likert-label {
+    display: flex; /* Align radio button and optional number */
+    flex-direction: column;
+    align-items: center;
+    cursor: pointer;
+    padding: 0 5px; /* Add space between radio buttons */
+  }
+  
+  .likert-label input[type="radio"] {
+    margin-bottom: 5px; /* Space between radio and number */
+    accent-color: #3498db;
+  }
+  
+  /* Optional: Number labels below Likert radios */
+  .likert-number {
+    font-size: 0.8em;
+    color: #666;
+  }
+  
+  /* Results Page Specific Styles */
+  #results-container {
+    background-color: white; 
+    max-width: 794px;  
+    margin: -40px auto;   
+    padding: 50px 30px;
+    align-items: center;
+   }
+  
+  #results-container h3 {
+    margin-top: 30px;
+    margin-bottom: 15px;
+    color: #2c3e50;
+    border-bottom: 2px solid #ecf0f1;
+    padding-bottom: 5px;
+  }
+  
+  #skill-scores {
+    list-style: none;
+    padding: 0;
+    column-count: 2; /* Display skills in two columns */
+    column-gap: 40px;
+  }
+  
+  #skill-scores li {
+    margin-bottom: 12px;
+    font-size: 1.05em;
+    padding: 5px 0;
+    border-bottom: 1px dotted #eee;
+  }
+  #skill-scores li:last-child {
+     border-bottom: none;
+  }
+  
+  #skill-scores strong {
+   color: #34495e;
+  }
+  
+  /* Responsive columns for smaller screens */
+  @media (max-width: 600px) {
+    #skill-scores {
+        column-count: 1;
+    }
+     .app-container {
+        padding: 15px 20px 20px 20px;
+    }
+     .likert-scale span {
+        font-size: 0.8em; /* Smaller text on small screens */
+    }
+  }
+    #results-container h1 {
+    color: black; 
+    font-weight:bold;
+    text-align: center;
+  }
+
+  #results-container h3 {
+    margin-top: 10px; /* More space before sections */
+    margin-bottom: 10px;
+    color: #16a085; /* Different color for section headers */
+    border-bottom: 2px solid #1abc9c;
+    padding-bottom: 8px;
+  }
+  
+.trait-visual-grid {
+  display: flex;
+  flex-direction: column;
+  padding: 50px 0px ;
+}
+
+.trait-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.trait-col {
+  border-radius: 8px;
+  padding: auto;
+   box-shadow: 1px rgba(0,0,0,0.05);
+}
+
+  
+  /* Responsive columns for smaller screens */
+  @media (max-width: 700px) {
+    .trait-summary-grid {
+        grid-template-columns: 1fr; /* Stack trait sections */
+        gap: 20px;
+    }
+     .categorized-skills {
+        column-count: 1; /* Single column for skills */
+    }
+  }
+  
+  /* --- Styles for Trait Score Bars --- */
+.trait-section li {
+  margin-bottom: 16px; 
+}
+
+.trait-label-score {
+  margin-bottom: 210px;
+  font-size: 1em;
+  gap:30px;
+}
+
+.trait-label-score strong {
+  color: #34495e;
+  margin-right: 5px;
+  display: inline-block;
+}
+
+.score-bar-container {
+  margin-bottom: -5px; /* ✅ small gap, consistent */
+  margin-top: 8px;
+  background-color: #e9ecef;
+  border-radius: 4px;
+  height: 10px;
+  overflow: hidden;
+  width: 100%;
+  border: 1px solid #dee2e6;
+}
+
+  
+  .score-bar {
+  background-color: #3498db; /* Blue fill color */
+  height: 100%;
+  border-radius: 3px; /* Slightly rounded inner bar */
+  transition: width 0.6s cubic-bezier(0.25, 1, 0.5, 1); /* Smooth animation */
+  min-width: 5px; /* Ensure even tiny scores show a sliver */
+  }
+  
+  /* --- Styles for Spider Chart Containers --- */
+  .trait-visual-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); /* Adjust minmax for chart size */
+    gap: 6px; /* Increased gap for charts */
+    margin-top: -40px;
+  }
+  .chart-container {
+     background-color: #fdfdfe;
+    border-radius: 6px;
+    border: 1px solid #ecf0f1;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+    /* Ensure chart scales reasonably */
+     position: relative; /* Needed for chart responsiveness */
+    height: 350px; 
+    width: 350px;
+   }
+  
+  .chart-container h4 {
+     text-align: center;
+     color: #2c3e50;
+  }
+  
+  /* --- Styles for Trait Section (List format with Bars) --- */
+  .trait-section-list { /* Specific class for list format */
+    background-color: #fdfdfe;
+    padding: 20px;
+    border-radius: 6px;
+    border: 1px solid #ecf0f1;
+     box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+  }
+  .trait-section-list h4 {
+     margin-top: 0;
+    margin-bottom: 15px;
+    color: #2c3e50;
+    border-bottom: 1px dashed #bdc3c7;
+    padding-bottom: 10px;
+  }
+  .trait-section-list ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  
+  /* Ensure bar chart container fits */
+  .score-bar-container {
+    width: 100%;
+  }
+  
+  /* Adjust grid layout for responsive */
+  @media (max-width: 992px) { /* Adjust breakpoint if needed */
+     .trait-visual-grid {
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 30px;
+    }
+  }
+  @media (max-width: 600px) {
+     .trait-visual-grid {
+        grid-template-columns: 1fr; /* Stack charts on small screens */
+        gap: 25px;
+    }
+     .chart-container {
+        padding: 15px;
+    }
+  }
+  
+.bigfive-chart-container {
+  /* border-width: 2px; equivalent to border-2 
+  border-color: #f5f5f5;  whitesmoke 
+  border-style: solid;
+  border-radius: 0.5rem; rounded-lg
+  background-color: white; bg-white  */
+  /* padding: 8px; */
+  /* width: 350px;  
+  height: 285px; */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  overflow: visible; /* allow label overflow */
+}
+/* 
+.bigfive-chart-container h1 {
+  margin-top: 0;
+  font-size: 16px;
+} */
+
+.bigfive-chart {
+  width: 357px;
+  height: 360px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: -48px; /* perfect fit with DISC */
+  overflow: visible;
+  /* margin-bottom: -80px; */
+}
+
+.bigfive-chart canvas {
+  overflow: visible !important;
+}
+
+  /* STYLES for Static Definition Section --- */
+
+/* component.css */
+.dropdown-section {
+  width: 100%;
+  margin-top: -70px;
+  gap: 45px;
+}
+
+.dropdown-toggle {
+  font-size: 0.75rem;
+  text-align: left;
+  padding: 0.25rem 0.1rem;
+  font-weight: 500;
+}
+
+/* .dropdown-toggle:hover {
+  background-color: #f3f4f6;
+} */
+
+.trait-definitions-section {
+  margin-top: 0.5rem;
+  background-color: #f9fafb;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+/* .navigation-buttons {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 20px;
+}
+
+.navigation-buttons button {
+  padding: 10px 20px;
+   background: whitesmoke;
+  color: black;
+} */
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeInUp {
+  animation: fadeInUp 0.4s ease-out forwards;
+}
+
+/* `clip`, not `hidden`: hidden makes each of these a scroll container,
+   which silently breaks `position: sticky` for every descendant — the portal
+   sidebars stopped following the page. clip crops the same overflow without
+   creating one. */
+html, body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+img, svg, video, canvas {
+  max-width: 100%;
+  height: auto;
+}
+
+
+/* :lang(ur) {
+  font-family: var(--font-jameel), serif;
+} */

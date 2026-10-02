@@ -1,0 +1,376 @@
+// OfferGuide — MySQL schema (Prisma)
+// Naming convention: snake_case in the database (via @map/@@map), camelCase in application code.
+// Per NAMING_CONVENTIONS.md §5 and the existing `userinfo` table's own snake_case convention.
+//
+// SCOPE NOTE: This schema covers OfferGuide's new tables only. The existing `userinfo`
+// table (auth/identity) is not managed here — candidate_profiles links to it by ID,
+// but userinfo itself stays on its current raw mysql2 access pattern until/unless
+// Phase A migrates it.
+//
+// SCORING MODEL: 7 categories — Salary, Benefits, Stability, Work-Life, Growth, Culture,
+// Purpose — confirmed against source FRS documents (see SCR-005 and SCR-010 field
+// inventories). Category composition is field-driven, not hardcoded: the scoring engine
+// groups offer_* fields by their FRS `category` attribute and averages within each group,
+// except Salary, which uses a dedicated market-percentile formula and is excluded from
+// the generic averaging path entirely.
+//
+// CONSENT: candidate-level, not session-level — set once on the candidate profile,
+// stored as flexible JSON so individual consent categories (currently 6, per SCR-009)
+// can be added/removed via the OgConsentToggles Mongo config without a schema change.
+// FRS/layout update pending (backlog item): move consent capture to SCR-001, simplify
+// SCR-009 to a read-only reminder.
+//
+// GUEST ACCESS: OfferGuide is usable without registering on the portal. A candidate_
+// profiles row can exist with userInfoId = null and guestToken set instead (a signed
+// opaque UUID stored in an httpOnly cookie). On registration, the app looks up the
+// candidate_profiles row matching the current guestToken cookie and sets userInfoId,
+// carrying the guest's evaluation history into their new account. Cross-device guest
+// registration (no matching cookie present) is an accepted gap for now, not solved by
+// this schema — email-based linking was deliberately deferred (requires real OTP
+// verification to avoid merging data via an unverified/typo'd email into a stranger's
+// account) and is a backlog item, not part of this design.
+
+// NOTE (Sprint 3 adaptation): this project runs Prisma 7, whose generator is
+// `prisma-client` (ESM, requires an explicit output path) — not the legacy
+// `prisma-client-js` from the original handoff file. Generator block kept from the
+// Sprint 1 scaffold; the 8 models below are the Sprint 3 handoff schema verbatim.
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+  // Connection URL lives in prisma.config.ts (Prisma 7 no longer accepts `url` here).
+}
+
+// ---------------------------------------------------------------------------
+// SCR-001 — Candidate Profile (reusable across sessions, filled once)
+// ---------------------------------------------------------------------------
+model CandidateProfile {
+  id                       Int      @id @default(autoincrement())
+  userInfoId               Int?     @unique @map("userinfo_id") // FK to existing userinfo.id, not Prisma-managed. Null until the guest registers.
+  guestToken               String?  @unique @map("guest_token") // signed opaque UUID, stored in an httpOnly cookie. Set for guests; cleared (or left, harmlessly) once claimed by a real account.
+
+  // Professional Information
+  careerStage              String   @map("career_stage") // Required. Student/Entry Level/Mid-Level/Senior/Leadership/Executive/Other
+  careerStageOtherText     String?  @map("career_stage_other_text") // shown only when careerStage = Other, max 50 chars
+  careerSwitcher           String?  @map("career_switcher")
+  targetFunctionalDomain   String?  @map("target_functional_domain") // conditional on careerSwitcher
+
+  // Location Information
+  currentCountry           String?  @map("current_country")
+  currentCity              String?  @map("current_city")
+
+  // Location & Work Preferences
+  preferredWorkArrangement String   @map("preferred_work_arrangement") // Required. On-site/Hybrid/Remote/No preference
+  preferredWorkLocation    String?  @map("preferred_work_location")
+  preferredCountry         String?  @map("preferred_country") // conditional
+  preferredLocationText    String?  @map("preferred_location_text") // conditional, free text
+
+  // Working Conditions (all optional — meaningless for students/unemployed)
+  currentWorkArrangement       String?  @default("On-site") @map("current_work_arrangement")
+  employmentType                String?  @map("employment_type")
+  employmentStatus               String?  @map("employment_status")
+  currentBaseSalary               Decimal? @map("current_base_salary") @db.Decimal(14, 2)
+  currentCurrency                  String?  @map("current_currency")
+  payFrequency                      String?  @map("pay_frequency")
+  workingHoursPerWeek                Int?     @map("working_hours_per_week")
+  averageDailyCommuteMinutes          Int?     @map("average_daily_commute_minutes") // hidden when currentWorkArrangement = Remote
+
+  // Benefits baseline
+  currentBenefits Json? @map("current_benefits") // multi-select chips, array of strings
+
+  // Consent — candidate-level, set once, not per evaluation session.
+  // Shape: { shareAnonymous: boolean, selections: { [toggleId]: boolean } }
+  // `selections` keys are validated at the application layer against the active
+  // toggle list in the OgConsentToggles Mongo collection — adding/removing a
+  // consent category never requires a schema change here.
+  consentSettings Json? @map("consent_settings")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  evaluationSessions EvaluationSession[]
+
+  @@map("candidate_profiles")
+}
+
+// ---------------------------------------------------------------------------
+// SCR-002 — Evaluation Setup (session-level, applies to all offers in session)
+// ---------------------------------------------------------------------------
+model EvaluationSession {
+  id                 Int    @id @default(autoincrement())
+  candidateProfileId Int    @map("candidate_profile_id")
+
+  evaluationType              String  @default("New job offer") @map("evaluation_type") // New job offer/Promotion offer/Internal transfer/Counteroffer
+  evaluationOfferCount        String  @map("evaluation_offer_count") // "One offer" / "Multiple offers"
+  evaluationPriorities        Json    @map("evaluation_priorities") // array, 1-3 of: Salary/Growth/Stability/Flexibility/Benefits/Culture/Purpose/Security/Other
+  evaluationPriorityOtherText String? @map("evaluation_priority_other_text") // captured, not scored in MVP
+
+  // Which config version produced this session's results — critical for score stability
+  // when an admin later tunes weights (see OgScoringConfig discussion).
+  scoringConfigVersion Int @map("scoring_config_version")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  candidateProfile CandidateProfile @relation(fields: [candidateProfileId], references: [id])
+  offers           Offer[]
+
+  @@map("evaluation_sessions")
+}
+
+// ---------------------------------------------------------------------------
+// SCR-003 — Offer Details (one row per offer; a session can have multiple)
+// ---------------------------------------------------------------------------
+model Offer {
+  id                  Int    @id @default(autoincrement())
+  evaluationSessionId Int    @map("evaluation_session_id")
+
+  label                 String? @map("label") // "Offer A" / "Offer B" for multi-offer sessions
+  companyName           String? @map("company_name")
+  roleTitle             String? @map("role_title")
+  offerCountry          String? @map("offer_country")
+  offerCity             String? @map("offer_city")
+  offerWorkArrangement  String  @map("offer_work_arrangement") // Required. On-site/Hybrid/Remote/Other. Compared vs preferredWorkArrangement.
+  offerEmploymentType   String  @map("offer_employment_type") // Required. Full-time/Part-time/Contract/Temporary/Internship/Freelance/Other
+  offerContractDuration String? @map("offer_contract_duration") // conditional: Contract or Temporary employment type
+  offerProbation         String? @default("Not clear") @map("offer_probation") // No probation/1 month/3 months/6 months/Not clear/Other. Stability signal — was missing from earlier schema drafts despite being fully specified in the SCR-003 FRS.
+  reportingLevel        String? @map("reporting_level")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  evaluationSession EvaluationSession      @relation(fields: [evaluationSessionId], references: [id])
+  compensation      OfferCompensation?
+  benefitsSecurity  OfferBenefitsSecurity?
+  workLife          OfferWorkLife?
+  growth            OfferGrowth?
+  culture           OfferCulture?
+  score             OfferScore?
+
+  @@map("offers")
+}
+
+// ---------------------------------------------------------------------------
+// SCR-004 — Compensation (20 fields across 4 sections)
+// ---------------------------------------------------------------------------
+model OfferCompensation {
+  id      Int @id @default(autoincrement())
+  offerId Int @unique @map("offer_id")
+
+  // Base Compensation
+  offerBaseSalary Decimal  @map("offer_base_salary") @db.Decimal(14, 2) // Required
+  offerPayPeriod  String   @default("Monthly") @map("offer_pay_period") // Required. Monthly/Annually
+  offerCurrency   String   @map("offer_currency") // Required
+  offerGrossNet   String?  @map("offer_gross_net")
+  offerTakeHome   Decimal? @map("offer_take_home") @db.Decimal(14, 2)
+
+  // Variable and One-time
+  offerSigningBonus    Decimal? @map("offer_signing_bonus") @db.Decimal(14, 2)
+  offerAnnualBonus     Decimal? @map("offer_annual_bonus") @db.Decimal(14, 2)
+  offerAnnualBonusType String?  @default("% of base") @map("offer_annual_bonus_type")
+  offerCommission      Decimal? @map("offer_commission") @db.Decimal(14, 2)
+  offerCommissionType  String?  @map("offer_commission_type")
+  offerEquity          Decimal? @map("offer_equity") @db.Decimal(14, 2)
+  offerEquityType      String?  @map("offer_equity_type")
+
+  // Allowances
+  offerTransportAllowance      Decimal? @map("offer_transport_allowance") @db.Decimal(14, 2) // hidden if Remote
+  offerTransportFrequency      String?  @map("offer_transport_frequency")
+  offerOtherAllowance          Decimal? @map("offer_other_allowance") @db.Decimal(14, 2)
+  offerOtherAllowanceFrequency String?  @map("offer_other_allowance_frequency")
+
+  // Compensation Quality
+  offerRelocationSupport String?  @map("offer_relocation_support") // conditional: location mismatch
+  offerRelocationAmount  Decimal? @map("offer_relocation_amount") @db.Decimal(14, 2)
+  offerReviewCycle       String?  @map("offer_review_cycle") // hidden if Contract/Temporary
+  offerNegotiationRoom   String?  @default("Not sure") @map("offer_negotiation_room")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  offer Offer @relation(fields: [offerId], references: [id])
+
+  @@map("offer_compensation")
+}
+
+// ---------------------------------------------------------------------------
+// SCR-005 — Benefits & Security (13 fields across 2 sections — confirmed
+// directly against the source FRS field inventory and screen structure tables)
+// ---------------------------------------------------------------------------
+model OfferBenefitsSecurity {
+  id      Int @id @default(autoincrement())
+  offerId Int @unique @map("offer_id")
+
+  // Section 1 — Benefits
+  offerHealthCoverage         String? @map("offer_health_coverage")
+  offerLifeInsurance          String? @map("offer_life_insurance")
+  offerRetirementBenefits     String? @map("offer_retirement_benefits")
+  offerAnnualLeaveDays        Int?    @map("offer_annual_leave_days")
+  offerSickLeave              String? @map("offer_sick_leave")
+  offerParentalLeave          String? @map("offer_parental_leave")
+  offerEducationReimbursement String? @map("offer_education_reimbursement")
+  offerDeviceSupport          String? @map("offer_device_support")
+  offerMealSupport            String? @map("offer_meal_support")
+  offerWellnessBenefits       String? @map("offer_wellness_benefits")
+  offerVisaSupport            String? @map("offer_visa_support") // conditional: offerCountry != currentCountry
+
+  // Section 2 — Security. Both fields feed the Stability scoring category
+  // (confirmed on each field's own FRS card: "Strong stability signal" /
+  // "used in stability score") — "Security" here is the FRS's screen-section
+  // label, not a real scoring category; there is no such category in the
+  // 7-category taxonomy.
+  offerJobSecurity        String? @map("offer_job_security")
+  offerRestrictiveClause  String? @map("offer_restrictive_clause")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  offer Offer @relation(fields: [offerId], references: [id])
+
+  @@map("offer_benefits_security")
+}
+
+// ---------------------------------------------------------------------------
+// SCR-006 — Work & Life (12 fields, confirmed complete against FRS field inventory)
+// ---------------------------------------------------------------------------
+model OfferWorkLife {
+  id      Int @id @default(autoincrement())
+  offerId Int @unique @map("offer_id")
+
+  // Daily Reality
+  offerWorkingHours       Int?    @map("offer_working_hours")
+  offerWeekendWork        String? @default("Not clear") @map("offer_weekend_work")
+  offerTravelRequirement  String? @map("offer_travel_requirement")
+  offerHybridDays         String? @default("Not applicable") @map("offer_hybrid_days")
+  offerCommuteMinutes     Int?    @map("offer_commute_minutes") // conditional, hidden if Remote
+  offerTimeFlexibility    String? @map("offer_time_flexibility")
+
+  // Flexibility & Fit
+  offerWfhSupport             String? @map("offer_wfh_support") // conditional, hidden if Remote
+  offerOvertimeCompensation   String? @map("offer_overtime_compensation")
+  offerAfterHoursAvailability String? @map("offer_after_hours_availability")
+  offerLeaveFlexibility       String? @map("offer_leave_flexibility")
+  offerPersonalEnergy         String? @map("offer_personal_energy")
+  offerWorklifeImportance     String? @default("Medium") @map("offer_worklife_importance") // Low/Medium/High
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  offer Offer @relation(fields: [offerId], references: [id])
+
+  @@map("offer_worklife")
+}
+
+// ---------------------------------------------------------------------------
+// SCR-007 — Growth (12 fields across 2 sections)
+// ---------------------------------------------------------------------------
+model OfferGrowth {
+  id      Int @id @default(autoincrement())
+  offerId Int @unique @map("offer_id")
+
+  // Learning & Development
+  offerLearningBudget  String? @map("offer_learning_budget")
+  offerTrainingSupport String? @map("offer_training_support")
+  offerBrandValue      Int?    @default(3) @map("offer_brand_value") // 1-5
+  offerSkillPotential  Int?    @default(3) @map("offer_skill_potential") // 1-5
+
+  // Career Progression
+  offerGoalMatch          Int?    @default(3) @map("offer_goal_match") // 1-5, "most important growth signal"
+  offerPromotionPath      String? @map("offer_promotion_path")
+  offerMentorship         String? @map("offer_mentorship")
+  offerStrongLeaders      String? @map("offer_strong_leaders")
+  offerInternalMobility   String? @default("Not clear") @map("offer_internal_mobility") // Yes/Somewhat/No/Not clear
+  offerRoleScope          String? @default("Not clear") @map("offer_role_scope") // Narrow/Balanced/High ownership/Not clear
+  offerPromotionTimeline  String? @map("offer_promotion_timeline")
+  offerGrowthImportance   Int?    @default(3) @map("offer_growth_importance") // 1-5
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  offer Offer @relation(fields: [offerId], references: [id])
+
+  @@map("offer_growth")
+}
+
+// ---------------------------------------------------------------------------
+// SCR-008 — Culture & Manager (14 fields across 2 sections — 12 original +
+// offerEmployerTreatmentSignal + offerLeadershipStyle, added when
+// offer_company_reputation and offer_leadership_stability were split into
+// separate Culture-facing and Stability-facing questions rather than having
+// one answer double-count in two categories. See design discussion.)
+// ---------------------------------------------------------------------------
+model OfferCulture {
+  id      Int @id @default(autoincrement())
+  offerId Int @unique @map("offer_id")
+
+  // Manager & Team
+  offerManagerImpression String? @map("offer_manager_impression")
+  offerTeamCultureFit    Int?    @default(3) @map("offer_team_culture_fit")
+  offerRedFlags          Json?   @map("offer_red_flags") // multi-select array; each entry generates a SCR-010 watch-out
+  offerNotes             String? @db.Text @map("offer_notes") // not scored — private notes
+
+  // Company Culture
+  offerValuesAlignment          Int?    @default(3) @map("offer_values_alignment") // 1-5. Culture only — its own FRS card does not reference Purpose.
+  offerInclusionConfidence      String? @map("offer_inclusion_confidence")
+  offerWorkPressure             String? @map("offer_work_pressure")
+  offerCompanyReputation        String? @map("offer_company_reputation") // Tightened to focus on market reputation/organizational stability — feeds Stability, not Culture (see offerEmployerTreatmentSignal below for the Culture-facing question)
+  offerLeadershipStability      String? @map("offer_leadership_stability") // Tightened to focus on actual turnover/reorganizations — feeds Stability (see offerLeadershipStyle below for the Culture-facing question)
+  offerEmployerTreatmentSignal  String? @map("offer_employer_treatment_signal") // NEW — Positive/Mixed/Negative/Not clear. Culture-facing counterpart to offerCompanyReputation: "how this company treats its employees day-to-day."
+  offerLeadershipStyle          String? @map("offer_leadership_style") // NEW — Approachable/Mixed/Distant/Not clear. Culture-facing counterpart to offerLeadershipStability: day-to-day approachability, not turnover.
+  offerPsychSafety              String? @map("offer_psych_safety")
+  offerPurposeSense             Int?    @default(3) @map("offer_purpose_sense") // 1-5. Assigned to Purpose category (not Culture) — its FRS card's "Culture" label was the UI-section grouping, not the final scoring category.
+  offerCultureImportance        Int?    @default(3) @map("offer_culture_importance") // 1-5
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  offer Offer @relation(fields: [offerId], references: [id])
+
+  @@map("offer_culture")
+}
+
+// ---------------------------------------------------------------------------
+// SCR-010 — Results (computed output, read-only to the candidate)
+// ---------------------------------------------------------------------------
+model OfferScore {
+  id      Int @id @default(autoincrement())
+  offerId Int @unique @map("offer_id")
+
+  salaryScore          Int    @map("salary_score") // dedicated percentile formula, not generic averaging
+  benefitsScore        Int    @map("benefits_score")
+  stabilityScore       Int    @map("stability_score")
+  worklifeScore        Int    @map("worklife_score")
+  growthScore          Int    @map("growth_score")
+  cultureScore         Int    @map("culture_score")
+  purposeScore         Int    @map("purpose_score")
+  overallScore         Int    @map("overall_score") // weighted average of the 7 above
+  recommendationLabel  String @map("recommendation_label") // derived from 85/72/58 thresholds
+
+  scoreBreakdown Json @map("score_breakdown") // per-field sub-scores (Option A design)
+
+  // Traceability — which config produced this result, so admin tuning never silently
+  // rewrites a candidate's past results.
+  scoringConfigVersion     Int @map("scoring_config_version")
+  fieldScoringRulesVersion Int @map("field_scoring_rules_version")
+
+  computedAt DateTime @default(now()) @map("computed_at")
+
+  offer Offer @relation(fields: [offerId], references: [id])
+
+  @@map("offer_scores")
+}
+
+// ---------------------------------------------------------------------------
+// NOT in this schema (by design):
+// - WizardDraft, OgScoringConfig, OgFieldScoringRules, OgReferenceData, OgConsentToggles
+//   → MongoDB (admin-editable, versioned, document-shaped config — see prior
+//   architecture discussion)
+// - userinfo → existing MySQL table, untouched, referenced by ID only
+//
+// BACKLOG (flagged during this design pass, not schema concerns):
+// - FRS/layout update: move consent capture from SCR-009 to SCR-001 (bottom-of-screen,
+//   own card, above nav); simplify SCR-009 to a read-only consent reminder
+// ---------------------------------------------------------------------------

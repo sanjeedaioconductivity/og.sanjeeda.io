@@ -1,0 +1,257 @@
+@import url("https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700;900&display=swap");
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* shadcn/ui design tokens. Consumed only by shadcn components.
+   NOTE: the portal-wide `body { @apply bg-background text-foreground }` and
+   `* { @apply border-border }` that shadcn init normally injects are
+   intentionally omitted to avoid restyling every existing page.
+
+   ⚠ DARK-THEME TOKEN SOURCE — PLACEHOLDER, PENDING DESIGN SIGN-OFF.
+   Sprint 2 §3 flags that no approved hex/token spec exists for the dark theme
+   anywhere in the docs. The prototype's styles.css is a LIGHT palette that
+   SCR-008 explicitly says is wrong, so it must not be used as the source of
+   truth. The `.dark` values below are PLACEHOLDER tokens derived from the
+   prototype's existing accent hues — teal #00a7a4, blue #0b6ff3,
+   amber #ff8a00, red #ee4f61 — recomposed on a navy background (brand
+   darkBlue #060b2d ≈ 232 77% 10%) to match the FRS "dark theme, navy/blue
+   palette" description and its semantic colors (amber = warning/negative,
+   green/teal = positive). Replace with the approved token set once Jamil
+   signs off; do NOT treat these hex values as final.
+   The `:root` (light) values are shadcn's zinc defaults, kept only so the
+   light/dark/system toggle has a working light state — also placeholder. */
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+    --primary: 240 5.9% 10%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    /* semantic extras (FRS): amber = warning/negative, green/teal = positive.
+       Placeholder, not yet wired into tailwind.config.ts. */
+    --warning: 33 100% 50%;
+    --warning-foreground: 0 0% 100%;
+    --success: 168 84% 33%;
+    --success-foreground: 0 0% 100%;
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 240 5.9% 10%;
+    --radius: 0.5rem;
+  }
+
+  /* PLACEHOLDER dark theme — navy/blue, pending design sign-off (see note above). */
+  .dark {
+    --background: 232 77% 10%;        /* brand navy #060b2d */
+    --foreground: 210 40% 96%;
+    --card: 231 45% 14%;
+    --card-foreground: 210 40% 96%;
+    --popover: 231 45% 14%;
+    --popover-foreground: 210 40% 96%;
+    --primary: 214 91% 50%;           /* prototype blue #0b6ff3 */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 231 40% 20%;
+    --secondary-foreground: 210 40% 96%;
+    --muted: 231 30% 22%;
+    --muted-foreground: 214 20% 72%;
+    --accent: 179 100% 33%;           /* prototype teal #00a7a4 */
+    --accent-foreground: 0 0% 100%;
+    --destructive: 351 82% 62%;       /* prototype red #ee4f61 */
+    --destructive-foreground: 0 0% 100%;
+    --warning: 33 100% 50%;           /* prototype amber #ff8a00 */
+    --warning-foreground: 0 0% 100%;
+    --success: 179 100% 33%;          /* teal, positive signals */
+    --success-foreground: 0 0% 100%;
+    --border: 231 30% 24%;
+    --input: 231 30% 24%;
+    --ring: 214 91% 55%;
+  }
+}
+
+* {
+  padding: 0;
+  margin: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: "Roboto", sans-serif;
+  background-color:#efefef;
+}
+
+/* Dark theme surface. Light mode is intentionally left exactly as-is (#efefef);
+   the site only gains dark-mode overrides so existing pages don't regress.
+   (OfferGuide Sprint 2 — theme rollout.) */
+.dark body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+/* Browser autofill forces a white background + dark text via UA !important
+   styles that normal CSS can't override. In dark mode, repaint autofilled
+   fields to match the theme so they aren't jarring white boxes. */
+.dark input:-webkit-autofill,
+.dark input:-webkit-autofill:hover,
+.dark input:-webkit-autofill:focus,
+.dark textarea:-webkit-autofill,
+.dark select:-webkit-autofill {
+  -webkit-text-fill-color: hsl(var(--foreground));
+  -webkit-box-shadow: 0 0 0 1000px hsl(var(--card)) inset;
+  caret-color: hsl(var(--foreground));
+  transition: background-color 9999s ease-out 0s;
+}
+
+.header {
+  text-align: center;
+  padding: 20px;
+}
+
+.container {
+  width: 85%;
+  margin: auto;
+}
+
+.flexSB {
+  display: flex;
+  justify-content: space-between;
+}
+
+.card {
+  width: 30%;
+  padding: 20px;
+  background-color: white;
+  border-radius: 10px;
+  box-shadow: 0 4px 8px rgb(0, 0, 0, 0.1);
+  margin-bottom: 20px; 
+}
+
+a {
+  text-decoration: none;
+}
+
+li {
+  list-style-type: none;
+}
+
+.row {
+  width: 50%;
+}
+
+.hero .row {
+  width: 100%;
+}
+
+#heading {
+  text-align: center;
+  padding: 40px 0;
+}
+
+#heading h3 {
+  font-weight: 600;
+  letter-spacing: 1px;
+  color: #1eb2a6;
+  text-transform: uppercase;
+}
+
+#heading h1 {
+  font-size: 45px;
+  margin: 20px 0;
+  text-transform: capitalize;
+}
+
+p {
+  line-height: 30px;
+  font-size: 18px;
+}
+
+
+h2 {
+  font-size: small; /* Adjusted */
+}
+
+@keyframes slideInOut {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(10px);
+  }
+}
+
+/* Add this new CSS rule */
+.scale-filled-portion {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background-color: var(--red);
+  border-radius: 9999px;
+}
+.circle-indicator {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1rem;
+  height: 1rem;
+  background-color: white;
+  border: 2px solid black;
+  border-radius: 50%;
+  box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
+}
+
+.circle-indicator-position {
+  left: 0;
+}
+
+.circle-indicator-position[data-position] {
+  left: calc(var(--indicator-position) * 1%);
+}
+
+@media screen and (max-width: 768px) {
+ 
+}
+
+/* Print / PDF helpers */
+@media print {
+.no-print {
+  display: none !important;
+}
+
+.page-break {
+  break-before: page;
+  page-break-before: always;
+}
+
+/* Ensure colors render in PDFs */
+*{
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
+
+/* Remove screen background when printing */
+body {
+  background: white !important;
+}
+}
+
+/* On screen, don't actually create blank space */
+.page-break {
+  display: none;
+}
+
+@media print {
+.page-break {
+  display: block;
+}
+}

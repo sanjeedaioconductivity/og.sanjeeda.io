@@ -1,0 +1,225 @@
+export const coursesData = [
+    {
+      id: 1,
+      image: "/images/c1.jpg",
+      title: "Introduction to JavaScript",
+      price: 49.99,
+      author: "John Doe",
+      reviewNumber: 450,
+      lessons: 20,
+      students: 150,
+      category: "Programming",
+    },
+    {
+      id: 2,
+      image: "/images/c2.jpg",
+      title: "Advanced Python Programming",
+      price: 69.99,
+      author: "Jane Smith",
+      reviewNumber: 670,
+      lessons: 25,
+      students: 120,
+      category: "Programming",
+    },
+    {
+      id: 3,
+      image: "/images/c3.jpg",
+      title: "UI/UX Design Fundamentals",
+      price: 59.99,
+      author: "Emily Johnson",
+      reviewNumber: 460,
+      lessons: 30,
+      students: 90,
+      category: "Design",
+    },
+    {
+      id: 4,
+      image: "/images/c4.jpg",
+      title: "Ethical Hacking Basics",
+      price: 55.99,
+      author: "Michael Brown",
+      reviewNumber: 440,
+      lessons: 18,
+      students: 110,
+      category: "Hacking",
+    },
+    {
+      id: 5,
+      image: "/images/c5.jpg",
+      title: "Full Stack Web Development",
+      price: 79.99,
+      author: "Chris Lee",
+      reviewNumber: 480,
+      lessons: 40,
+      students: 200,
+      category: "Programming",
+    },
+    {
+      id: 6,
+      image: "/images/c6.jpg",
+      title: "Software Testing and QA",
+      price: 45.99,
+      author: "Alex Wilson",
+      reviewNumber: 430,
+      lessons: 22,
+      students: 80,
+      category: "Software",
+    },
+  ];
+  
+  export const articleData = [
+    {
+      id: 1,
+      userImage: "/images/u1.jpg",
+      username: "John Doe",
+      reaction: 45,
+      coverImage: "/images/b1.jpg",
+      title: "Understanding JavaScript",
+    },
+    {
+      id: 2,
+      userImage: "/images/u2.jpg",
+      username: "Jane Smith",
+      reaction: 78,
+      coverImage: "/images/b2.jpg",
+      title: "A Guide to Node.js Event Loop",
+    },
+    {
+      id: 3,
+      userImage: "/images/u3.jpg",
+      username: "Alex Johnson",
+      reaction: 62,
+      coverImage: "/images/b3.jpg",
+      title: "Introduction to React Hooks",
+    },
+  ]
+  export const awrapper = [
+    {
+      // cover: "https://img.icons8.com/ios/50/macbook-idea--v1.png",
+      data: "3,000",
+      title: "SUCCESS STORIES",
+    },
+  
+    {
+      // cover: "https://img.icons8.com/ios/50/macbook-idea--v1.png",
+      data: "320",
+      title: "TRUSTED TUTORS",
+    },
+    {
+      // cover: "https://img.icons8.png",
+      data: "1,000",
+      title: "SCHEDULES",
+    },
+    {
+      cover: "./courses/img.icons8.png",
+      data: "587",
+      title: "COURSES",
+    },
+  ]
+  export const servicesCard = [
+    {
+      id: 1,
+      cover: "/courses/img.png", // Example path for service image
+      ServicesName: "Database Management and Optimization",
+      desc: "8.For enhanced data efficiency for recruiters and employers.",
+    },
+    {
+      id: 2,
+      cover: "/courses/c1.png",
+      ServicesName: "Your Perfect 3D CV",
+      desc: "1.Easily create a standout CV tailored to your unique skills and experiences.",
+    },
+    {
+      id: 3,
+      cover: "/courses/c2.png",
+      ServicesName: "Ideal Job Matches",
+      desc: " Variety of desirable job openings, making it easy to apply and find opportunities that fit your skills.",
+    },
+    {
+      id: 4,
+      cover: "/courses/c3.jpg",
+      ServicesName: "Interview Preparation",
+
+      desc: "2. Personalized mock interview services to boost your interview success.",
+    },
+    {
+      id: 5,
+      cover: "/courses/c4.png",
+      ServicesName: "Skill Development Training",
+      desc: "Designed for job seekers to improve and polish your skills to elevate your career.",
+    },
+    {
+      id: 6,
+      cover: "/courses/c5.png",
+      ServicesName: "Offer Acceptance Calculator",
+      desc: "Evaluate and compare multiple job offers based on key factors like salary, benefits, and growth opportunities.",
+    },
+    {
+      id: 7,
+      cover: "/courses/c6.jpg",
+      ServicesName: "Career Focused Programs",
+      desc: "Training and mentorship to help individuals gain the skills and confidence needed",
+    },
+    {
+      id: 8,
+      cover: "/courses/s9.jpg",
+      ServicesName: "Career Assessments",
+      desc: " Tools to evaluate your skills and personality to identify suitable career paths",
+    },
+    {
+      id: 9,
+      cover: "/courses/s9.png",
+      ServicesName: "Expert Consultancy Services",
+      desc: "Personalized strategies and insights to help you navigate challenges, enhance performance, and achieve your goals.",
+      },
+    ];
+    export const blogDate = [
+      {
+        id: 1,
+        type: "admin",
+        date: "JAN. 18, 2021",
+        com: "3 COMMENTS ",
+        title: "Workplace culture",
+        desc: "Workplace culture is the shared values, beliefs, and practices that shape how employees interact, collaborate, and approach their work. A positive culture enhances employee satisfaction and engagement, fostering a space where people feel valued, motivated, and connected to the organization’s goals. By emphasizing clear values, open communication, and supportive leadership, organizations create an environment where trust and teamwork thrive, ultimately strengthening the overall work dynamic. Beyond the interpersonal aspects, the physical environment and recognition of achievements also play crucial roles in shaping culture. A well-designed, comfortable workspace, combined with a culture of acknowledgment, boosts morale and reinforces loyalty. When employees feel both supported and celebrated for their contributions, it elevates job satisfaction, productivity, and retention—helping both individuals and the organization reach their full potential.",
+        cover: "../images/blog/b1.webp",
+      },
+      {
+        id: 2,
+        type: "admin",
+        date: "API. 25, 2022",
+        com: "5 COMMENTS ",
+        title: "Build your Dream Software & Engineering Career",
+        desc: "A small river named Duden flows by their place and supplies it with the necessary regelialia.",
+        cover: "../images/blog/b2.webp",
+      },
+      {
+        id: 3,
+        type: "user",
+        date: "MAY. 15, 2022",
+        com: "10 COMMENTS ",
+        title: "Build your Dream Software & Engineering Career",
+        desc: "A small river named Duden flows by their place and supplies it with the necessary regelialia.",
+        cover: "../images/blog/b3.webp",
+      },
+      {
+        id: 4,
+        type: "admin",
+        date: "JAN. 02, 2022",
+        com: "3 COMMENTS ",
+        title: "Build your Dream Software & Engineering Career",
+        desc: "A small river named Duden flows by their place and supplies it with the necessary regelialia.",
+        cover: "../images/blog/b4.webp",
+      },
+  ];
+  export const team = [
+    {
+      cover: "/fb.png",
+      name: "Mirza Faizan Baig (CEO)",
+      work: "Career Consultant / HR Consultant Faizan is the founder of Conductivity Career & HR Solutions. with 17 years of experience in HR and passion for Career Development.",
+    },
+    {
+      cover: "/mk.jpg",
+      name: "Muhammad Majid Khan(Executive Director)",
+      work: "DEVELOPER AND LEAD INSTRUCTOR",
+    },
+  ]

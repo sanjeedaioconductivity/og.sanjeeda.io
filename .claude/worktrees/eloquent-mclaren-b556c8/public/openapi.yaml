@@ -1,0 +1,26 @@
+openapi: 3.0.3
+info:
+  title: OfferGuide API (placeholder)
+  version: 0.0.0
+  description: >
+    Placeholder OpenAPI document for Sprint 1. The real OfferGuide contract
+    lands with the backend API sprints (Sprint 4-5). This file exists so the
+    /api-docs route renders correctly, including the "Try it out" button.
+servers:
+  - url: http://localhost:3000
+paths:
+  /api/ping:
+    get:
+      summary: Health check (placeholder)
+      description: Temporary endpoint so the docs page renders a real path this sprint.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok

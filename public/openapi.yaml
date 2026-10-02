@@ -1,0 +1,2024 @@
+openapi: 3.0.3
+info:
+  title: OfferGuide API
+  version: 2.0.0
+  description: >
+    OfferGuide (sanjeeda.io career services portal) backend contract.
+
+
+    Sprint 8 completed this file. Sprints 1–7 shipped 34 paths but only
+    Sprint 5's own 13 were ever documented here, which made Story 8.1.1
+    ("verify every endpoint in Swagger") impossible to execute. Every route
+    that exists in `src/app/api/offerguide/` is now declared, with its auth
+    mode, status codes and response shape.
+
+
+    ## Auth modes
+
+    Four modes, named exactly as the Sprint 8 handoff §3.1 table names them:
+
+
+    * **PUBLIC** — no cookie, no token. Reference data only.
+
+    * **guestOrAuth** — a `guestToken` httpOnly cookie **or** a portal JWT.
+      Behaviour is identical either way, scoped to whichever identity is
+      present; a JWT wins when both are sent. Never returns one candidate's
+      data to another.
+
+    * **bearerAuth** — a portal JWT only. A guest cookie is rejected.
+
+    * **adminAuth** — a portal JWT whose account's stored `role` is `admin`.
+      Rejects no credentials, a guest cookie, and an ordinary registered-user
+      JWT alike. The role is read from the database on every check, so a
+      demotion takes effect immediately rather than at the next token expiry.
+
+    ### Swagger UI limitation (read before verifying)
+
+    The **Authorize** button can only drive the JWT cases. It cannot attach the
+    `guestToken` httpOnly cookie. Every `guestOrAuth` operation must therefore
+    be verified **twice**: once here with a JWT, and once outside Swagger
+    (browser or `curl -b`) with only the guest cookie present. Both must return
+    the same shape.
+
+    `adminAuth` and `bearerAuth` are the same credential — one bearer JWT — so
+    authorizing once covers both. Which of the two a request satisfies depends
+    on the account behind the token, not on anything the client sends.
+
+
+    ## Contract-level integrity rules
+
+    * Scoring config versions are **immutable**. There is no PUT or PATCH on
+      `/admin/config/scoring` — a new version is a POST, and previously
+      computed scores are never retroactively changed.
+
+    * Retiring the master consent toggle (`consent_share_anonymous`) returns
+      **409**. It would orphan every candidate's stored consent preference.
+
+    * Every `/admin/config/*` DELETE is a **soft delete**: it sets
+      `active: false` and returns the retired document. Nothing is ever
+      hard-deleted, because a retired question still has to explain the
+      meaning of evaluations scored while it was live.
+
+    * `GET /config/questions` returns the `QuestionPublic` shape and leaks
+      **no** scoring data — no `scoreType`, no option scores, no
+      `numericBands`, no `nullScore`, no multipliers.
+
+
+    ## Operation count
+
+    The Sprint 8 handoff §3.1 inventory is **54 operations across 34 paths**,
+    and all 54 are declared below. Four additional item-level `GET`s
+    (geography, market-benchmarks, functional-domains, consent-toggles) also
+    exist in code — Sprint 5 shipped them via the shared CRUD factory. They
+    are declared here too, tagged `Superset`, because an undeclared reachable
+    admin route is worse than a count that doesn't match the table. They are
+    not part of the §3.1 checklist.
+
+
+    ## Field inventories
+
+    The per-screen field sets (SCR-001's 24 fields, SCR-005's 13, and so on)
+    live in each screen's FRS and are verified there, per Story 8.2.1. The
+    flat sub-resource PATCH bodies below are typed as objects of scalar
+    answer fields rather than restating ~150 columns.
+
+servers:
+  - url: http://localhost:3000
+
+tags:
+  - name: Candidate Profile
+    description: Candidate-level identity, answers and consent (SCR-001).
+  - name: Evaluation Sessions
+    description: One evaluation run (SCR-002), holding one or more offers.
+  - name: Offers
+    description: Per-offer detail and the screen-scoped answer sub-resources.
+  - name: Scoring
+    description: Compute and read an offer's score (SCR-010).
+  - name: Wizard Draft
+    description: Autosaved in-progress answers. 30-day TTL.
+  - name: Public Config
+    description: Candidate-safe reference data. No auth of any kind.
+  - name: Admin Config
+    description: >
+      Swagger/script/curl-only endpoints — no admin UI exists. Every route here
+      requires a portal JWT whose account's stored role is `admin` (see
+      AdminAuth). Roles are assigned by migration script and operational action
+      only; there is no endpoint here or anywhere else that changes one.
+  - name: Superset
+    description: >
+      Reachable in code but outside the handoff §3.1 inventory of 54.
+      Declared so nothing admin-facing is undocumented.
+
+# Default: no auth. Each operation states its own mode explicitly.
+security: []
+
+paths:
+  /api/ping:
+    get:
+      tags: [Public Config]
+      summary: Health check
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+
+  # ===========================================================================
+  # Candidate profile & guest claim — operations 1–5
+  # ===========================================================================
+  /api/offerguide/candidate-profile:
+    get:
+      tags: [Candidate Profile]
+      summary: Get the caller's candidate profile
+      description: guestOrAuth. Scoped to the caller's own identity.
+      security: [{ BearerAuth: [] }, { GuestCookie: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CandidateProfile" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Candidate Profile]
+      summary: Create the caller's candidate profile
+      description: >
+        guestOrAuth. With no identity present, mints a `guestToken` and sets
+        it as an httpOnly cookie on the response — this is the operation that
+        makes a guest a guest.
+      security: [{ BearerAuth: [] }, { GuestCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CandidateProfile" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CandidateProfile" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+    patch:
+      tags: [Candidate Profile]
+      summary: Update the caller's candidate profile
+      description: >
+        guestOrAuth. Partial merge — only the fields sent are changed. A
+        return visit updates the existing profile rather than creating a
+        second one.
+      security: [{ BearerAuth: [] }, { GuestCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CandidateProfile" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CandidateProfile" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/offerguide/candidate-profile/consent:
+    patch:
+      tags: [Candidate Profile]
+      summary: Update consent settings
+      description: >
+        guestOrAuth. Consent is **candidate-level**, not session-level, and is
+        captured on SCR-001 (SCR-009 shows a read-only reminder). All toggles
+        default to Off. Toggle ids are validated against `OgConsentToggles`,
+        so an unknown or retired id is a 400 rather than silently stored.
+      security: [{ BearerAuth: [] }, { GuestCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ConsentSettings" }
+      responses:
+        "200":
+          description: The updated consent settings
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsentSettings" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/offerguide/claim-guest-profile:
+    post:
+      tags: [Candidate Profile]
+      summary: Link a guest profile to the now-registered account
+      description: >
+        bearerAuth — a guest cookie alone is rejected, since there is no
+        account to link to. Sets `userInfoId` on the existing guest row and
+        touches nothing else; the answers were already there.
+
+
+        Known limitation: this only works when the guest cookie is present in
+        the same browser. Registering on a different device orphans the guest
+        history, and no email-based linking exists.
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: >
+            Linked, or nothing to link (no guest cookie, no guest profile, or
+            the account already had its own profile — all reported in
+            `message` rather than as errors).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string, example: Guest profile linked. }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ===========================================================================
+  # Evaluation sessions — operations 6–11
+  # ===========================================================================
+  /api/offerguide/evaluation-sessions:
+    get:
+      tags: [Evaluation Sessions]
+      summary: List the caller's evaluation sessions
+      security: [{ BearerAuth: [] }, { GuestCookie: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/EvaluationSession" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Evaluation Sessions]
+      summary: Create an evaluation session (SCR-002)
+      description: >
+        guestOrAuth. Pins `scoringConfigVersion` to the currently active
+        config at creation time, so retuning weights later never shifts this
+        session's already-computed scores.
+      security: [{ BearerAuth: [] }, { GuestCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EvaluationSession" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EvaluationSession" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/offerguide/evaluation-sessions/{sessionId}:
+    parameters: [{ $ref: "#/components/parameters/SessionId" }]
+    get:
+      tags: [Evaluation Sessions]
+      summary: Get one session with its offers
+      description: >
+        guestOrAuth, ownership-checked. A session belonging to another
+        candidate returns 404, not 403 — the contract does not confirm that
+        someone else's session exists.
+      security: [{ BearerAuth: [] }, { GuestCookie: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/EvaluationSession"
+                  - type: object
+                    properties:
+                      offers:
+                        type: array
+                        items: { $ref: "#/components/schemas/Offer" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Evaluation Sessions]
+      summary: Update a session
+      description: >
+        guestOrAuth. `evaluationPriorities` enforces minimum 1 and maximum 3
+        selections; "Other" free text is stored in
+        `evaluationPriorityOtherText` and is not mapped to any category.
+      security: [{ BearerAuth: [] }, { GuestCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EvaluationSession" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EvaluationSession" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/offerguide/evaluation-sessions/{sessionId}/compare:
+    parameters: [{ $ref: "#/components/parameters/SessionId" }]
+    get:
+      tags: [Evaluation Sessions]
+      summary: Compare every offer in the session (SCR-009)
+      description: >
+        guestOrAuth. Returns each offer with its stored score plus the
+        comparison outcome. **The winner is decided server-side** — a
+        comparison in the frontend that produces a displayed value is a
+        defect. `winnerOfferIds` is a list because a tie badges every offer
+        sharing the top score, with `isTie` stated explicitly so the client
+        never infers it. Offers that have never been scored carry
+        `score: null`, do not win, and do not create a tie.
+      security: [{ BearerAuth: [] }, { GuestCookie: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionComparison" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/offerguide/evaluation-sessions/{sessionId}/offers:
+    parameters: [{ $ref: "#/components/parameters/SessionId" }]
+    post:
+      tags: [Evaluation Sessions]
+      summary: Add an offer to the session (SCR-003)
+      description: >
+        guestOrAuth. Used both for the first offer and for the multi-offer
+        loop from SCR-009, which returns here and then runs SCR-003 → SCR-008
+        again for the new offer.
+      security: [{ BearerAuth: [] }, { GuestCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Offer" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Offer" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ===========================================================================
+  # Offers & scoring — operations 12–21
+  # ===========================================================================
+  /api/offerguide/offers/{offerId}:
+    parameters: [{ $ref: "#/components/parameters/OfferId" }]
+    get:
+      tags: [Offers]
+      summary: Get one offer with all its answer sub-resources
+      security: [{ BearerAuth: [] }, { GuestCookie: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OfferFull" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Offers]
+      summary: Update SCR-003 offer detail fields
+      security: [{ BearerAuth: [] }, { GuestCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Offer" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Offer" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Offers]
+      summary: Delete an offer from the session
+      description: >
+        guestOrAuth. Deleting one offer from a multi-offer session leaves the
+        session and the remaining offers intact.
+      security: [{ BearerAuth: [] }, { GuestCookie: [] }]
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/offerguide/offers/{offerId}/compensation:
+    parameters: [{ $ref: "#/components/parameters/OfferId" }]
+    patch:
+      tags: [Offers]
+      summary: Update SCR-004 compensation answers
+      security: [{ BearerAuth: [] }, { GuestCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AnswerPatch" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AnswerPatch" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/offerguide/offers/{offerId}/benefits-security:
+    parameters: [{ $ref: "#/components/parameters/OfferId" }]
+    patch:
+      tags: [Offers]
+      summary: Update SCR-005 benefits & security answers (13 fields)
+      security: [{ BearerAuth: [] }, { GuestCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AnswerPatch" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AnswerPatch" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/offerguide/offers/{offerId}/worklife:
+    parameters: [{ $ref: "#/components/parameters/OfferId" }]
+    patch:
+      tags: [Offers]
+      summary: Update SCR-006 work & life answers (12 fields)
+      security: [{ BearerAuth: [] }, { GuestCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AnswerPatch" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AnswerPatch" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/offerguide/offers/{offerId}/growth:
+    parameters: [{ $ref: "#/components/parameters/OfferId" }]
+    patch:
+      tags: [Offers]
+      summary: Update SCR-007 growth answers (12 fields)
+      security: [{ BearerAuth: [] }, { GuestCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AnswerPatch" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AnswerPatch" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/offerguide/offers/{offerId}/culture:
+    parameters: [{ $ref: "#/components/parameters/OfferId" }]
+    patch:
+      tags: [Offers]
+      summary: Update SCR-008 culture & manager answers
+      description: >
+        guestOrAuth. `offer_notes` (private notes) is stored here and is
+        **never scored**, and is excluded from culture signal contribution
+        even when the relevant consent toggle is On.
+      security: [{ BearerAuth: [] }, { GuestCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AnswerPatch" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AnswerPatch" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/offerguide/offers/{offerId}/compute-score:
+    parameters: [{ $ref: "#/components/parameters/OfferId" }]
+    post:
+      tags: [Scoring]
+      summary: Compute and persist this offer's score
+      description: >
+        guestOrAuth. Scores the offer's current answers against the
+        `OgScoringConfig` version pinned to its evaluation session — never
+        "whatever is currently active" — and upserts the result into
+        `offer_scores`, stamping the `scoringConfigVersion` that produced it.
+
+
+        Safe to call repeatedly: each call re-scores from scratch and
+        overwrites the prior result. Under an unchanged config it reproduces
+        identical output. Reading a score back without recomputing is
+        `GET ../score`.
+      security: [{ BearerAuth: [] }, { GuestCookie: [] }]
+      responses:
+        "201":
+          description: Score computed and persisted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OfferScoreResult" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/offerguide/offers/{offerId}/score:
+    parameters: [{ $ref: "#/components/parameters/OfferId" }]
+    get:
+      tags: [Scoring]
+      summary: Read this offer's stored score without recomputing
+      description: >
+        guestOrAuth. Returns the persisted `offer_scores` row as-is, so
+        revisiting SCR-010 shows the numbers that were computed before rather
+        than silently re-running the engine against a config that may have
+        been retuned since. 404 when the offer has never been scored — a
+        zeroed score would be indistinguishable from a genuinely bad offer.
+      security: [{ BearerAuth: [] }, { GuestCookie: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OfferScoreResult" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ===========================================================================
+  # Wizard draft — operations 22–24
+  # ===========================================================================
+  /api/offerguide/wizard-draft:
+    get:
+      tags: [Wizard Draft]
+      summary: Get the caller's saved draft
+      security: [{ BearerAuth: [] }, { GuestCookie: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WizardDraft" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Wizard Draft]
+      summary: Upsert the caller's draft
+      description: >
+        guestOrAuth. Autosaved on field blur and step change. The document
+        carries a 30-day TTL index — unlike guest *profile* data, which has
+        no automatic expiry.
+      security: [{ BearerAuth: [] }, { GuestCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WizardDraft" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WizardDraft" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+    delete:
+      tags: [Wizard Draft]
+      summary: Discard the caller's draft
+      description: >
+        guestOrAuth. Idempotent — 204 whether or not a draft existed, and
+        whether or not an identity is present.
+      security: [{ BearerAuth: [] }, { GuestCookie: [] }]
+      responses:
+        "204":
+          description: Discarded
+
+  # ===========================================================================
+  # Public config reads — operations 25–28. No auth of any kind.
+  # ===========================================================================
+  /api/offerguide/config/questions:
+    get:
+      tags: [Public Config]
+      summary: Question definitions for one screen (candidate-safe)
+      description: >
+        PUBLIC. Returns the `QuestionPublic` shape only. **This is a data-leak
+        boundary**: no `scoreType`, no option `score` values, no
+        `numericBands`, no `nullScore`, no `ratingMultiplier`, and no
+        `options[].active` appears in the response for any screen — a
+        candidate must not be able to reverse-engineer scoring from the
+        network tab. Retired questions and retired options are omitted.
+      parameters:
+        - name: screen
+          in: query
+          required: true
+          schema: { type: string, example: SCR-006 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/QuestionPublic" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /api/offerguide/config/consent-toggles:
+    get:
+      tags: [Public Config]
+      summary: Consent toggle definitions
+      description: >
+        PUBLIC. One master toggle (`consent_share_anonymous`) plus five
+        sub-toggles, master first. Read from `OgConsentToggles`, never
+        hardcoded — retiring a sub-toggle in the admin API removes it from the
+        UI with no deploy.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ConsentTogglePublic" }
+
+  /api/offerguide/config/geography:
+    get:
+      tags: [Public Config]
+      summary: Countries, or the cities of one country
+      description: >
+        PUBLIC. Without `countryCode`, returns active countries. With it,
+        returns that country's active cities. Powers a dependent dropdown; it
+        does not constrain what `current_city` / `offer_city` may store, since
+        the free-text escape hatch always exists.
+      parameters:
+        - name: countryCode
+          in: query
+          required: false
+          schema: { type: string, example: PK }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: array
+                    items: { $ref: "#/components/schemas/GeographyCountryPublic" }
+                  - type: array
+                    items: { $ref: "#/components/schemas/GeographyCityPublic" }
+
+  /api/offerguide/config/functional-domains:
+    get:
+      tags: [Public Config]
+      summary: Functional domain options (SCR-003)
+      description: PUBLIC.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/FunctionalDomainPublic" }
+
+  # ===========================================================================
+  # Admin config — OgQuestions — operations 29–33
+  # ===========================================================================
+  /api/offerguide/admin/config/questions:
+    get:
+      tags: [Admin Config]
+      summary: List all questions (full QuestionAdmin shape)
+      description: >
+        adminAuth. Returns retired (`active: false`) documents too — the admin
+        view is exactly where a soft-deleted document must stay visible.
+      security: [{ AdminAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/QuestionAdmin" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Admin Config]
+      summary: Create a question
+      description: >
+        adminAuth. Category composition is field-driven: a new question with
+        `category: Growth` joins the Growth average on the next scoring run
+        with no code change.
+      security: [{ AdminAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/QuestionAdmin" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QuestionAdmin" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/offerguide/admin/config/questions/{fieldId}:
+    parameters: [{ $ref: "#/components/parameters/FieldId" }]
+    get:
+      tags: [Admin Config]
+      summary: Get a question by fieldId
+      security: [{ AdminAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QuestionAdmin" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Admin Config]
+      summary: Update a question (partial merge)
+      security: [{ AdminAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/QuestionAdmin" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QuestionAdmin" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Admin Config]
+      summary: Retire a question (soft delete)
+      description: >
+        adminAuth. Sets `active: false` and returns the retired document.
+        Nothing is hard-deleted — a retired question still explains the
+        meaning of evaluations scored while it was live. It disappears from
+        `GET /config/questions` and stops feeding the category average, but
+        stays in the admin list.
+      security: [{ AdminAuth: [] }]
+      responses:
+        "200":
+          description: "Retired — the returned document has active: false"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QuestionAdmin" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ===========================================================================
+  # Admin config — scoring (immutable) — operations 34–36
+  # ===========================================================================
+  /api/offerguide/admin/config/scoring:
+    get:
+      tags: [Admin Config]
+      summary: List all scoring config versions
+      security: [{ AdminAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ScoringConfig" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Admin Config]
+      summary: Create a new scoring config version
+      description: >
+        adminAuth. **Versions are immutable.** There is deliberately no PUT or
+        PATCH on this collection anywhere in the API — editing an existing
+        version is not a route that rejects requests, it is a route that does
+        not exist. Re-POSTing an existing version number returns 400.
+        Creating a new version leaves previously computed scores untouched.
+      security: [{ AdminAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ScoringConfig" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScoringConfig" }
+        "400":
+          description: Missing version, or that version already exists
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/offerguide/admin/config/scoring/{version}:
+    parameters:
+      - name: version
+        in: path
+        required: true
+        schema: { type: integer }
+        description: The version number recorded on an `offer_scores` row.
+    get:
+      tags: [Admin Config]
+      summary: Get one scoring config version
+      description: >
+        adminAuth. The audit read path: resolves the `scoringConfigVersion`
+        stamped on a stored score back to the exact weights behind it.
+      security: [{ AdminAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScoringConfig" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/offerguide/admin/config/scoring/{version}/activate:
+    parameters:
+      - name: version
+        in: path
+        required: true
+        schema: { type: integer }
+        description: The version to make active.
+    post:
+      tags: [Admin Config]
+      summary: Activate a scoring config version
+      description: >
+        adminAuth. Sprint 10. Flips `isActive` on exactly one version, in a
+        transaction — every other version off, this one on. Does NOT modify a
+        version's scoring content: versions remain immutable, this moves only
+        the active pointer that `POST /evaluation-sessions` reads. Re-activating
+        the already-active version is a no-op that still returns 200.
+      security: [{ AdminAuth: [] }]
+      responses:
+        "200":
+          description: The newly-active config.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScoringConfig" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/offerguide/admin/config/scoring/{version}/preview:
+    parameters:
+      - name: version
+        in: path
+        required: true
+        schema: { type: integer }
+        description: The version to preview against the currently active one.
+    get:
+      tags: [Admin Config]
+      summary: Preview a scoring version against the golden fixtures
+      description: >
+        adminAuth. Sprint 10. Scores the five golden fixtures under the
+        currently active config and under {version}, side by side, so an admin
+        can see the impact before activating. Read-only — never writes an
+        `offer_scores` row, hence GET despite doing real computation. Works for
+        any version, not just drafts. 404 if the version does not exist, or if
+        no active version exists to compare against.
+      security: [{ AdminAuth: [] }]
+      responses:
+        "200":
+          description: Both scored results per fixture; the client computes deltas.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [activeVersion, previewVersion, fixtures]
+                properties:
+                  activeVersion: { type: integer }
+                  previewVersion: { type: integer }
+                  fixtures:
+                    type: array
+                    items:
+                      type: object
+                      required: [fixtureId, label, active, preview]
+                      properties:
+                        fixtureId: { type: string, example: A }
+                        label: { type: string }
+                        active: { $ref: "#/components/schemas/FixtureScore" }
+                        preview: { $ref: "#/components/schemas/FixtureScore" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ===========================================================================
+  # Admin config — geography — operations 37–42
+  # ===========================================================================
+  /api/offerguide/admin/config/geography:
+    get:
+      tags: [Admin Config]
+      summary: List all countries with their cities
+      security: [{ AdminAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Geography" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Admin Config]
+      summary: Create a country
+      security: [{ AdminAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Geography" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Geography" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/offerguide/admin/config/geography/{countryCode}:
+    parameters: [{ $ref: "#/components/parameters/CountryCode" }]
+    get:
+      tags: [Superset]
+      summary: Get one country
+      description: adminAuth. Outside the §3.1 inventory — see the Superset tag.
+      security: [{ AdminAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Geography" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Admin Config]
+      summary: Update a country (partial merge)
+      security: [{ AdminAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Geography" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Geography" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Admin Config]
+      summary: Retire a country (soft delete)
+      security: [{ AdminAuth: [] }]
+      responses:
+        "200":
+          description: "Retired — the returned document has active: false"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Geography" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/offerguide/admin/config/geography/{countryCode}/cities:
+    parameters: [{ $ref: "#/components/parameters/CountryCode" }]
+    post:
+      tags: [Admin Config]
+      summary: Add a city to a country
+      description: >
+        adminAuth. Cities are embedded in their country document, so this is a
+        sub-resource POST rather than a create against a collection of its
+        own. `cityId` is unique within its country; a duplicate returns 409.
+        Returns the whole updated country.
+      security: [{ AdminAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GeographyCity" }
+      responses:
+        "201":
+          description: Created — returns the updated country document
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Geography" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: A city with that `cityId` already exists in this country
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/offerguide/admin/config/geography/{countryCode}/cities/{cityId}:
+    parameters:
+      - $ref: "#/components/parameters/CountryCode"
+      - name: cityId
+        in: path
+        required: true
+        schema: { type: string }
+    patch:
+      tags: [Admin Config]
+      summary: Rename or retire a city
+      description: >
+        adminAuth. PATCH and not DELETE by design — a city is retired with
+        `active: false`, never removed from its country document, following
+        the same soft-delete rule as the rest of `/admin/config/*`. That is
+        why this path has no DELETE sibling.
+      security: [{ AdminAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                active: { type: boolean }
+      responses:
+        "200":
+          description: OK — returns the updated country document
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Geography" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ===========================================================================
+  # Admin config — market benchmarks — operations 43–46
+  # ===========================================================================
+  /api/offerguide/admin/config/market-benchmarks:
+    get:
+      tags: [Admin Config]
+      summary: List market benchmarks
+      description: >
+        adminAuth. Admin-maintained reference data, seeded in Sprint 3. This
+        is what the Salary category score is computed against — it is **not**
+        the same thing as community aggregate data, which comes from
+        candidate-contributed consent data and does not exist yet.
+      security: [{ AdminAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/MarketBenchmark" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Admin Config]
+      summary: Create a market benchmark row
+      security: [{ AdminAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MarketBenchmark" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MarketBenchmark" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/offerguide/admin/config/market-benchmarks/{id}:
+    parameters: [{ $ref: "#/components/parameters/MongoId" }]
+    get:
+      tags: [Superset]
+      summary: Get one market benchmark row
+      description: adminAuth. Outside the §3.1 inventory — see the Superset tag.
+      security: [{ AdminAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MarketBenchmark" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Admin Config]
+      summary: Update a market benchmark row (partial merge)
+      security: [{ AdminAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MarketBenchmark" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MarketBenchmark" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Admin Config]
+      summary: Retire a market benchmark row (soft delete)
+      description: >
+        adminAuth. Sets `active: false`. A retired row stops feeding new
+        Salary scores but stays in the collection to explain old ones.
+
+
+        Keyed on the Mongo `_id` rather than a business key — unlike the other
+        five collections, this one is identified by `role` + `location`
+        together, so there is no single field to key on.
+      security: [{ AdminAuth: [] }]
+      responses:
+        "200":
+          description: "Retired — the returned document has active: false"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MarketBenchmark" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ===========================================================================
+  # Admin config — functional domains — operations 47–50
+  # ===========================================================================
+  /api/offerguide/admin/config/functional-domains:
+    get:
+      tags: [Admin Config]
+      summary: List functional domains
+      security: [{ AdminAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/FunctionalDomain" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Admin Config]
+      summary: Create a functional domain
+      security: [{ AdminAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FunctionalDomain" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FunctionalDomain" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/offerguide/admin/config/functional-domains/{domainId}:
+    parameters: [{ $ref: "#/components/parameters/DomainId" }]
+    get:
+      tags: [Superset]
+      summary: Get one functional domain
+      description: adminAuth. Outside the §3.1 inventory — see the Superset tag.
+      security: [{ AdminAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FunctionalDomain" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Admin Config]
+      summary: Update a functional domain (partial merge)
+      security: [{ AdminAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FunctionalDomain" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FunctionalDomain" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Admin Config]
+      summary: Retire a functional domain (soft delete)
+      security: [{ AdminAuth: [] }]
+      responses:
+        "200":
+          description: "Retired — the returned document has active: false"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FunctionalDomain" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ===========================================================================
+  # Admin config — consent toggles — operations 51–54
+  # ===========================================================================
+  /api/offerguide/admin/config/consent-toggles:
+    get:
+      tags: [Admin Config]
+      summary: List consent toggles
+      security: [{ AdminAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ConsentToggle" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Admin Config]
+      summary: Create a consent toggle
+      security: [{ AdminAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ConsentToggle" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsentToggle" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/offerguide/admin/config/consent-toggles/{toggleId}:
+    parameters: [{ $ref: "#/components/parameters/ToggleId" }]
+    get:
+      tags: [Superset]
+      summary: Get one consent toggle
+      description: adminAuth. Outside the §3.1 inventory — see the Superset tag.
+      security: [{ AdminAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsentToggle" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Admin Config]
+      summary: Update a consent toggle (partial merge)
+      security: [{ AdminAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ConsentToggle" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsentToggle" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Admin Config]
+      summary: Retire a consent toggle (soft delete)
+      description: >
+        adminAuth. Retiring a sub-toggle removes it from the SCR-001 consent
+        card with no deploy, since the UI reads its definitions from
+        `GET /config/consent-toggles`.
+
+
+        **Retiring the master toggle (`consent_share_anonymous`) returns
+        409** — it would orphan every candidate's stored consent preference.
+      security: [{ AdminAuth: [] }]
+      responses:
+        "200":
+          description: "Retired — the returned document has active: false"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsentToggle" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Attempted to retire the master consent toggle
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        The portal's own JWT. On a `guestOrAuth` route it takes precedence
+        over the guest cookie when both are present.
+    GuestCookie:
+      type: apiKey
+      in: cookie
+      name: guestToken
+      description: >
+        httpOnly cookie minted by `POST /candidate-profile` when no identity
+        is present. **Swagger UI cannot attach this** — verify guest-mode
+        behaviour outside Swagger with `curl -b` or a browser session.
+    AdminAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        The portal's own JWT, belonging to an account whose stored `role` is
+        `admin` (Sprint 9). The same credential as `BearerAuth` — what separates
+        the two is the account behind the token, not anything the client sends.
+
+        The role is read from `sanjeedausers` on every check rather than taken
+        from a token claim, so a demotion applies immediately instead of at the
+        next expiry. Authorization is expressed as the `portal.admin.access`
+        permission, resolved through the static role→permission map in
+        `src/lib/portal/permissions.ts`; no call site compares the role directly.
+
+        Fails closed. No token, an expired token, a token for a deleted account,
+        an unrecognised role, or a database error all resolve to the public tier,
+        which does not hold `portal.admin.access`.
+
+        Sprint 9 replaced an interim env-configured header gate here. It was
+        removed entirely rather than kept as a fallback — there is no second way
+        into these routes.
+
+  parameters:
+    MongoId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+      description: Mongo ObjectId
+    FieldId:
+      name: fieldId
+      in: path
+      required: true
+      schema: { type: string }
+      example: offer_working_hours
+    CountryCode:
+      name: countryCode
+      in: path
+      required: true
+      schema: { type: string }
+      example: PK
+    DomainId:
+      name: domainId
+      in: path
+      required: true
+      schema: { type: string }
+    ToggleId:
+      name: toggleId
+      in: path
+      required: true
+      schema: { type: string }
+      example: consent_salary_ranges
+    OfferId:
+      name: offerId
+      in: path
+      required: true
+      schema: { type: integer }
+    SessionId:
+      name: sessionId
+      in: path
+      required: true
+      schema: { type: integer }
+
+  responses:
+    BadRequest:
+      description: Validation error
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: Missing or invalid credentials for this operation's auth mode
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: >
+        Not found — also returned when the resource belongs to another
+        candidate, so the contract never confirms that someone else's data
+        exists.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+        message: { type: string }
+
+    # ----------------------------------------------------------- candidate
+    ConsentSettings:
+      type: object
+      description: >
+        Candidate-level, stored on `candidate_profiles.consentSettings`.
+        Every toggle defaults to **Off** — privacy-first. When
+        `shareAnonymous` is false, every selection is treated as Off
+        regardless of its stored value, and the sub-toggles are dimmed in the
+        UI. Framing is anonymised throughout: no copy implies personal data is
+        shared.
+      properties:
+        shareAnonymous:
+          type: boolean
+          default: false
+          description: The master toggle, `consent_share_anonymous`.
+        selections:
+          type: object
+          additionalProperties: { type: boolean }
+          description: >
+            Keyed by `toggleId`. Validated against `OgConsentToggles`, so an
+            unknown or retired id is rejected with 400.
+
+    CandidateProfile:
+      type: object
+      description: >
+        SCR-001. 24 fields, of which only `careerStage` and
+        `preferredWorkArrangement` are required. One profile per identity;
+        a return visit updates it rather than creating a second.
+      properties:
+        id: { type: integer, readOnly: true }
+        userInfoId:
+          type: integer
+          nullable: true
+          description: Null while the candidate is a guest.
+        guestToken:
+          type: string
+          nullable: true
+          readOnly: true
+        careerStage: { type: string }
+        preferredWorkArrangement: { type: string }
+        currentCountry: { type: string, nullable: true }
+        currentCity: { type: string, nullable: true }
+        consentSettings: { $ref: "#/components/schemas/ConsentSettings" }
+      additionalProperties: true
+
+    # --------------------------------------------------------------- session
+    EvaluationSession:
+      type: object
+      description: SCR-002. Three required fields.
+      properties:
+        id: { type: integer, readOnly: true }
+        candidateProfileId: { type: integer, readOnly: true }
+        evaluationType: { type: string }
+        evaluationOfferCount:
+          type: string
+          description: >
+            "One offer" gates SCR-010's community insight card — it is shown
+            for single-offer sessions only.
+        evaluationPriorities:
+          type: array
+          items: { type: string }
+          minItems: 1
+          maxItems: 3
+          description: >
+            1–3 selections, enforced with a live counter on SCR-002. Each one
+            resolves through `OgScoringConfig.priorityCategoryMap` to add
+            `priorityBoost` to the matching category weight.
+        evaluationPriorityOtherText:
+          type: string
+          nullable: true
+          description: Stored, and not mapped to any category.
+        scoringConfigVersion:
+          type: integer
+          readOnly: true
+          description: >
+            Pinned at creation time. Every score computed in this session is
+            stamped with it, so retuning weights later never shifts an
+            already-computed score.
+
+    SessionComparison:
+      type: object
+      description: SCR-009's comparison. The winner is decided server-side.
+      properties:
+        sessionId: { type: integer }
+        evaluationOfferCount: { type: string, nullable: true }
+        offerCount: { type: integer }
+        bestOverallScore:
+          type: integer
+          nullable: true
+          description: Null when no offer in the session has been scored.
+        isTie:
+          type: boolean
+          description: True when more than one offer shares the top score.
+        winnerOfferIds:
+          type: array
+          items: { type: integer }
+          description: >
+            A list, not a single id — a tie badges **both** offers rather than
+            arbitrarily picking one.
+        offers:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer }
+              label: { type: string, nullable: true }
+              companyName: { type: string, nullable: true }
+              roleTitle: { type: string, nullable: true }
+              offerWorkArrangement: { type: string, nullable: true }
+              isWinner: { type: boolean }
+              score:
+                allOf: [{ $ref: "#/components/schemas/OfferScoreResult" }]
+                nullable: true
+
+    # ----------------------------------------------------------------- offer
+    Offer:
+      type: object
+      description: SCR-003 offer detail fields.
+      properties:
+        id: { type: integer, readOnly: true }
+        evaluationSessionId: { type: integer, readOnly: true }
+        label: { type: string, nullable: true, example: Offer A }
+        companyName: { type: string, nullable: true }
+        roleTitle: { type: string, nullable: true }
+        offerFunctionalDomain: { type: string, nullable: true }
+        offerReceivedDate: { type: string, format: date, nullable: true }
+        offerCountry: { type: string, nullable: true }
+        offerCity: { type: string, nullable: true }
+        offerWorkArrangement: { type: string }
+        offerEmploymentType: { type: string }
+        offerContractDuration: { type: string, nullable: true }
+        offerProbation:
+          type: string
+          nullable: true
+          description: >
+            Documented enum override — its "Not clear" scores **20**, not the
+            standard 45, because an unstated probation period is a risk
+            signal rather than neutral uncertainty.
+        reportingLevel: { type: string, nullable: true }
+      additionalProperties: true
+
+    OfferFull:
+      allOf:
+        - $ref: "#/components/schemas/Offer"
+        - type: object
+          properties:
+            compensation: { $ref: "#/components/schemas/AnswerPatch" }
+            benefitsSecurity: { $ref: "#/components/schemas/AnswerPatch" }
+            workLife: { $ref: "#/components/schemas/AnswerPatch" }
+            growth: { $ref: "#/components/schemas/AnswerPatch" }
+            culture: { $ref: "#/components/schemas/AnswerPatch" }
+
+    AnswerPatch:
+      type: object
+      description: >
+        A flat set of that screen's answer fields, camelCase. Partial merge —
+        only the fields sent are changed. The authoritative per-screen field
+        inventory is each screen's FRS (verified in Story 8.2.1), not this
+        schema. Enum values, including the "Not clear / Not sure / Not
+        applicable" terminology standard, are validated server-side against
+        `OgQuestions`; selecting "Other" requires its paired free-text field.
+      additionalProperties: true
+
+    OfferScoreResult:
+      type: object
+      description: >
+        Everything SCR-010 renders. Every value here is READ — the client must
+        never recompute, re-derive or "sanity-check" any of it.
+      properties:
+        offerId: { type: integer }
+        salaryScore:
+          type: integer
+          description: >
+            Computed by the dedicated market-percentile formula against
+            `OgMarketBenchmarks` and **excluded from generic category
+            averaging** entirely. The benchmark pool degrades in stages —
+            role match, then location match, then the full pool — and falls
+            back to a flat score when no base salary was entered or the
+            collection is empty.
+        benefitsScore: { type: integer }
+        stabilityScore:
+          type: integer
+          description: >
+            `offer_restrictive_clause` scores into **Stability**, not
+            Benefits. Its "Not clear" is the second documented enum override,
+            scoring 65 rather than 45.
+        worklifeScore: { type: integer }
+        growthScore: { type: integer }
+        cultureScore:
+          type: integer
+          description: >
+            Each `offer_red_flags` selection applies a fixed penalty here;
+            "Other" counts as one additional flag. `offer_notes` is never
+            scored.
+        purposeScore:
+          type: integer
+          description: >
+            Composed of exactly one field, `offer_purpose_sense`.
+            `offer_values_alignment` scores into Culture and does not feed
+            Purpose.
+        overallScore:
+          type: integer
+          description: Weighted average across all 7 categories.
+        recommendationLabel:
+          type: string
+          description: SCR-010 §6.1 — four thresholds, four labels.
+          enum:
+            - Excellent fit — strong offer
+            - Good fit — negotiate a few points
+            - Moderate fit — clarify concerns
+            - Weak fit — proceed carefully
+        strengths:
+          type: array
+          description: Categories scoring ≥ 75, descending, max 4.
+          items:
+            type: object
+            properties:
+              category: { type: string }
+              score: { type: integer }
+        watchOuts:
+          type: array
+          items: { type: string }
+          description: Score-based first, then field-signal. Max 5.
+        nextSteps:
+          type: array
+          items: { type: string }
+          description: >
+            By triggering category score ascending, max 4, with the
+            "Request written confirmation of key terms" fallback when nothing
+            else triggers.
+        scoreBreakdown:
+          type: object
+          description: Per-category weights, per-field scores, and the salary detail.
+        scoringConfigVersion:
+          type: integer
+          description: >
+            Recorded on every score row. Re-running compute-score under an
+            unchanged config reproduces identical output.
+        fieldScoringRulesVersion: { type: integer }
+
+    # ---------------------------------------------------------- wizard draft
+    WizardDraft:
+      type: object
+      required: [currentScreen]
+      properties:
+        currentScreen: { type: string, example: SCR-004 }
+        answers:
+          type: object
+          additionalProperties: true
+        candidateProfileId: { type: integer, nullable: true }
+        updatedAt: { type: string, format: date-time, readOnly: true }
+
+    # -------------------------------------------------------- public config
+    QuestionPublic:
+      type: object
+      description: >
+        The candidate-safe projection. Note what is **absent**: `scoreType`,
+        `category`, option `score` values, `numericBands`, `nullScore`,
+        `ratingMultiplier`, `options[].active`.
+      properties:
+        fieldId: { type: string }
+        screen: { type: string }
+        label: { type: string }
+        helpText: { type: string }
+        uiControl: { type: string }
+        options:
+          type: array
+          items:
+            type: object
+            properties:
+              value: { type: string }
+              sortOrder: { type: integer }
+
+    ConsentTogglePublic:
+      type: object
+      properties:
+        toggleId: { type: string }
+        label: { type: string }
+        helpText: { type: string }
+        sourceScreen: { type: string }
+        isMaster: { type: boolean }
+
+    GeographyCountryPublic:
+      type: object
+      properties:
+        countryCode: { type: string, example: PK }
+        countryName: { type: string, example: Pakistan }
+
+    GeographyCityPublic:
+      type: object
+      properties:
+        cityId: { type: string }
+        name: { type: string }
+
+    FunctionalDomainPublic:
+      type: object
+      properties:
+        domainId: { type: string }
+        name: { type: string }
+
+    # --------------------------------------------------------- admin config
+    QuestionOption:
+      type: object
+      required: [value, score]
+      properties:
+        value: { type: string }
+        sortOrder: { type: integer }
+        active: { type: boolean, default: true }
+        score: { type: number }
+
+    NumericBand:
+      type: object
+      required: [score]
+      properties:
+        upTo:
+          type: number
+          description: Omit on the last band to mean "no upper limit".
+        score: { type: number }
+
+    QuestionAdmin:
+      type: object
+      required: [fieldId, screen, category, label, helpText, uiControl, scoreType]
+      properties:
+        fieldId: { type: string, example: offer_working_hours }
+        screen: { type: string, example: SCR-006 }
+        category:
+          type: string
+          description: >
+            **This field alone determines category composition.** The scoring
+            engine groups questions by it at query time — there is no
+            field-to-category map in code, so reassigning a question here
+            changes scoring on the next run with no deploy.
+          enum: [Benefits, Stability, Work-Life, Growth, Culture, Purpose]
+        label: { type: string }
+        helpText: { type: string }
+        uiControl: { type: string }
+        scoreType:
+          type: string
+          enum: [enum, rating, numeric]
+          description: >
+            "yesno" is retired (Sprint 5) — the scoring engine treats it as a
+            data bug, not a supported type. The enum scale is 100 / 65 / 45 /
+            20, with two documented per-field overrides
+            (`offer_probation`, `offer_restrictive_clause`).
+        options:
+          type: array
+          items: { $ref: "#/components/schemas/QuestionOption" }
+        ratingMultiplier:
+          type: number
+          default: 20
+          description: Rating fields resolve as 1–5 × this.
+        numericBands:
+          type: array
+          items: { $ref: "#/components/schemas/NumericBand" }
+          description: >
+            Used by `offer_working_hours`, `offer_commute_minutes` and
+            `offer_annual_leave_days`.
+        nullScore:
+          type: number
+          default: 45
+          description: Applied when the answer is blank.
+        active:
+          type: boolean
+          default: true
+          description: Set false by the soft-delete DELETE. Never hard-deleted.
+        sortOrder: { type: integer, default: 0 }
+
+    ScoringConfig:
+      type: object
+      required: [version]
+      description: >
+        Immutable once created. The importance-slider and `evaluationType`
+        weighting layers are live infrastructure shipping at their default
+        settings, with no real-world tuning applied yet.
+      properties:
+        version: { type: integer }
+        effectiveFrom: { type: string, format: date-time }
+        isActive: { type: boolean }
+        categoryBaseWeights:
+          type: object
+          additionalProperties: { type: number }
+          description: Base weight 1.0 per category.
+        priorityBoost:
+          type: number
+          default: 1.2
+          description: Added per `evaluationPriorities` selection.
+        priorityCategoryMap:
+          type: object
+          additionalProperties: { type: string }
+          description: >
+            SCR-010 §7's mapping, authoritative over SCR-002's stale
+            pre-taxonomy prose. Includes `Security → Stability` and
+            `Flexibility / Commute → Work-Life`.
+        importanceWeighting:
+          type: object
+          description: >
+            `offer_worklife_importance`, `offer_growth_importance` and
+            `offer_culture_importance` adjust their category weights and are
+            **not** themselves scored as questions.
+        evaluationTypeBonus: { type: object }
+
+    GeographyCity:
+      type: object
+      required: [cityId, name]
+      properties:
+        cityId: { type: string }
+        name: { type: string }
+        active: { type: boolean, default: true }
+
+    Geography:
+      type: object
+      required: [countryCode, countryName]
+      properties:
+        countryCode: { type: string, example: PK }
+        countryName: { type: string, example: Pakistan }
+        active: { type: boolean, default: true }
+        cities:
+          type: array
+          items: { $ref: "#/components/schemas/GeographyCity" }
+
+    MarketBenchmark:
+      type: object
+      required: [role, location, currency, p25, p50, p75]
+      properties:
+        role: { type: string }
+        location: { type: string }
+        currency: { type: string }
+        p25: { type: number }
+        p50: { type: number }
+        p75: { type: number }
+        sampleSize: { type: integer, default: 0 }
+        effectiveFrom: { type: string, format: date-time }
+        active: { type: boolean, default: true }
+
+    FixtureScore:
+      type: object
+      description: One fixture scored under one config — the unit the preview diffs.
+      required: [categoryScores, overallScore, recommendationLabel]
+      properties:
+        categoryScores:
+          type: object
+          description: Score per category (Salary, Benefits, Stability, Work-Life, Growth, Culture, Purpose).
+          additionalProperties: { type: number }
+        overallScore: { type: number }
+        recommendationLabel: { type: string, example: "Excellent fit — strong offer" }
+
+    FunctionalDomain:
+      type: object
+      required: [domainId, name]
+      properties:
+        domainId: { type: string }
+        name: { type: string }
+        active: { type: boolean, default: true }
+        sortOrder: { type: integer, default: 0 }
+
+    ConsentToggle:
+      type: object
+      required: [toggleId, label, helpText, sourceScreen]
+      properties:
+        toggleId: { type: string, example: consent_salary_ranges }
+        label: { type: string }
+        helpText: { type: string }
+        sourceScreen: { type: string, example: SCR-004 }
+        isMaster:
+          type: boolean
+          default: false
+          description: >
+            True only for `consent_share_anonymous`. Retiring that toggle
+            returns 409.
+        active: { type: boolean, default: true }
+        sortOrder: { type: integer, default: 0 }
