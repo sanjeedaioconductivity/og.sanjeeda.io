@@ -46,7 +46,7 @@ export default function ModernHeader() {
   // Routes that paint the night-blue surface. Keep this list in sync with the
   // pages themselves: a page listed here but still on `darkBlue` (or vice versa)
   // is exactly what produces the mismatched navy band this was added to remove.
-  const NIGHT_SURFACE_ROUTES = ["/offerguide", "/khudiassessment"];
+  const NIGHT_SURFACE_ROUTES = ["/offerguide", "/khudiassessment", "/3d-cv"];
   const isNightSurface = NIGHT_SURFACE_ROUTES.some((r) => pathname?.startsWith(r));
   // Whole literal class strings: Tailwind scans source text, so a class assembled
   // from fragments at runtime never gets a rule generated for it.

@@ -175,6 +175,15 @@ html:has(.og-surface) body {
   background-color: hsl(230 35% 18%);
 }
 
+/* Same fix for the 3D CVs module (3d-cv/layout.tsx). Keep these literals identical to
+   `--background` in its CV3D_TOKENS, light and dark. */
+html:has(.cv3d-surface) body {
+  background-color: hsl(240 33% 98%);
+}
+.dark:has(.cv3d-surface) body {
+  background-color: hsl(230 35% 18%);
+}
+
 /* Browser autofill forces a white background + dark text via UA !important
    styles that normal CSS can't override. In dark mode, repaint autofilled
    fields to match the theme so they aren't jarring white boxes. */
