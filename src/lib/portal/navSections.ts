@@ -139,14 +139,15 @@ const SERVICE_SECTIONS: readonly NavEntry[] = [
   },
   {
     label: "Offer Calculator",
-    href: "/FinancialOffer",
+    href: "/offer-letter",
     icon: Calculator,
     group: "services",
     permission: "offerguide.wizard.use",
   },
   {
     label: "3D CVs",
-    href: "/cv",
+    // The 3D CVs module. `/cv` is the older hardcoded single-CV demo page.
+    href: "/3d-cv",
     icon: Layers3,
     group: "services",
     permission: "offerguide.wizard.use",

@@ -2,12 +2,13 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Check, EyeOff, ShieldCheck, Sparkles } from 'lucide-react';
+import Link from 'next/link';
+import { Check, Eye, EyeOff, Plus, ShieldCheck, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import AppShell from '../_components/AppShell';
 import { Action, PageHeading, WarningNote } from '../_components/ui';
-import { FREE_VERSION_LIMIT, isExpired, makeVersion, planCv } from '../_lib/cv';
-import { careerStageLabel, DIMENSIONS } from '../_lib/dimensions';
+import { FREE_VERSION_LIMIT, isExpired, makeVersion, planCv, type SectionChoices } from '../_lib/cv';
+import { careerStageLabel, DIMENSIONS, type DimensionId } from '../_lib/dimensions';
 import type { CvMode } from '../_lib/matching';
 import { snapshotOf, stageOf, useCv3d } from '../_lib/store';
 
@@ -16,12 +17,19 @@ export default function StrategyPage() {
   const router = useRouter();
   const { state, hydrated, createVersion } = useCv3d();
   const [mode, setMode] = useState<CvMode>('standard');
+  // Candidate overrides of the relevance filter, carried into the generated version.
+  const [choices, setChoices] = useState<SectionChoices>({});
+  const choose = (d: DimensionId, value: 'show' | 'hide' | null) =>
+    setChoices(({ [d]: _drop, ...rest }) => {
+      void _drop;
+      return value ? { ...rest, [d]: value } : rest;
+    });
   const job = state.currentJob;
 
   const plan = useMemo(() => {
     if (!job) return null;
-    return planCv(makeVersion({ id: 'preview', job, mode, stage: stageOf(state), profile: snapshotOf(state) }));
-  }, [job, mode, state]);
+    return planCv(makeVersion({ id: 'preview', job, mode, sections: choices, stage: stageOf(state), profile: snapshotOf(state) }));
+  }, [job, mode, choices, state]);
 
   if (!hydrated) return <AppShell tabs>{null}</AppShell>;
   if (!job || !plan) {
@@ -122,23 +130,55 @@ export default function StrategyPage() {
         {doc.sections.map((s, i) => (
           <li key={s.dimension} className="flex items-center gap-3 rounded-xl border border-border bg-card px-3 py-2 text-sm">
             <span className="flex h-6 w-6 items-center justify-center rounded-md bg-[hsl(var(--cv-primary))] text-xs font-bold text-white">{i + 1}</span>
-            <span className="flex-1 font-medium">{s.heading}</span>
-            <span className="text-xs text-muted-foreground">
-              {s.items.length} {s.items.length === 1 ? 'item' : 'items'}
+            <span className="min-w-0 flex-1">
+              <span className="block font-medium">{s.heading}</span>
+              <span className="block text-xs text-muted-foreground">
+                {s.items.length} {s.items.length === 1 ? 'item' : 'items'}
+                {s.shownByChoice && ' · shown by you'}
+              </span>
             </span>
+            <SectionToggle
+              label={`Hide ${s.heading}`}
+              icon={EyeOff}
+              onClick={() => choose(s.dimension, s.shownByChoice ? null : 'hide')}
+            >
+              Hide
+            </SectionToggle>
           </li>
         ))}
       </ol>
 
       {hiddenSections.length > 0 && (
         <>
-          <h2 className="mt-6 mb-2 font-bold">Sections hidden to keep the CV sharp</h2>
+          <h2 className="mt-6 mb-1 font-bold">Sections hidden to keep the CV sharp</h2>
+          <p className="mb-2 text-xs text-muted-foreground">
+            Want one in your CV anyway? Tap Show. It joins in your career-stage order.
+          </p>
           <ul className="space-y-1.5">
             {hiddenSections.map((h) => (
               <li key={h.dimension} className="flex items-center gap-3 rounded-xl bg-muted px-3 py-2 text-sm">
                 <EyeOff className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-                <span className="flex-1">{DIMENSIONS[h.dimension].label}</span>
-                <span className="text-right text-xs text-muted-foreground">{h.reason}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block">{DIMENSIONS[h.dimension].label}</span>
+                  <span className="block text-xs text-muted-foreground">{h.reason}</span>
+                </span>
+                {h.canShow ? (
+                  <SectionToggle
+                    label={`Show ${DIMENSIONS[h.dimension].label}`}
+                    icon={Eye}
+                    onClick={() => choose(h.dimension, choices[h.dimension] === 'hide' ? null : 'show')}
+                  >
+                    Show
+                  </SectionToggle>
+                ) : (
+                  <Link
+                    href={`/3d-cv/profile/${h.dimension}`}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs font-semibold hover:border-[hsl(var(--cv-primary))]"
+                  >
+                    <Plus className="h-3.5 w-3.5" aria-hidden />
+                    {h.dimension === 'attributes' ? 'Update' : 'Add'}
+                  </Link>
+                )}
               </li>
             ))}
           </ul>
@@ -169,7 +209,7 @@ export default function StrategyPage() {
         <Action
           look="cta"
           disabled={atLimit || included.size === 0}
-          onClick={() => router.push(`/3d-cv/cv/${createVersion(mode)}`)}
+          onClick={() => router.push(`/3d-cv/cv/${createVersion(mode, choices)}`)}
         >
           <Sparkles className="h-4 w-4" aria-hidden />
           Generate My CV
@@ -182,5 +222,29 @@ export default function StrategyPage() {
         </Action>
       </div>
     </AppShell>
+  );
+}
+
+function SectionToggle({
+  label,
+  icon: Icon,
+  onClick,
+  children,
+}: {
+  label: string;
+  icon: typeof Eye;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={onClick}
+      className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-[hsl(var(--cv-primary))] bg-card px-2.5 py-1.5 text-xs font-semibold text-[hsl(var(--cv-primary-ink))] hover:bg-[hsl(var(--cv-primary-soft))]"
+    >
+      <Icon className="h-3.5 w-3.5" aria-hidden />
+      {children}
+    </button>
   );
 }

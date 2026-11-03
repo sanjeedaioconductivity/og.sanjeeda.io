@@ -21,6 +21,8 @@ import {
 export const FREE_VERSION_LIMIT = 3;
 export const FREE_EXPIRY_DAYS = 21;
 
+export type SectionChoices = Partial<Record<DimensionId, 'show' | 'hide'>>;
+
 export interface CvVersion {
   id: string;
   name: string;
@@ -34,6 +36,12 @@ export interface CvVersion {
   profile: ProfileSnapshot;
   /** Entry ids the candidate removed from this CV. */
   hidden: string[];
+  /**
+   * Per-section choice that overrides the default relevance filter: 'show' puts a
+   * hidden section back (all its entries), 'hide' leaves an included one out.
+   * Optional because versions saved before this field existed don't have it.
+   */
+  sections?: SectionChoices;
   summaryOverride: string | null;
   coverLetterOverride: string | null;
   /** Concept §15 screen 19: a human must approve before final download. */
@@ -48,6 +56,7 @@ export function makeVersion(args: {
   mode: CvMode;
   stage: CareerStage;
   profile: ProfileSnapshot;
+  sections?: SectionChoices;
   now?: Date;
 }): CvVersion {
   const now = args.now ?? new Date();
@@ -62,6 +71,7 @@ export function makeVersion(args: {
     stage: args.stage,
     profile: args.profile,
     hidden: [],
+    sections: args.sections ?? {},
     summaryOverride: null,
     coverLetterOverride: null,
     approved: false,
@@ -132,6 +142,8 @@ export interface CvSection {
   dimension: DimensionId;
   heading: string;
   items: CvItem[];
+  /** Not relevant by default; included because the candidate chose to show it. */
+  shownByChoice?: boolean;
 }
 
 export interface CvDocument {
@@ -228,7 +240,7 @@ export interface CvPlan {
   match: MatchResult;
   doc: CvDocument;
   /** Dimensions left out of the CV and why. */
-  hiddenSections: { dimension: DimensionId; reason: string }[];
+  hiddenSections: { dimension: DimensionId; reason: string; canShow: boolean }[];
 }
 
 export function planCv(version: CvVersion): CvPlan {
@@ -240,41 +252,53 @@ export function planCv(version: CvVersion): CvPlan {
   const sections: CvSection[] = [];
   const hiddenSections: CvPlan['hiddenSections'] = [];
 
+  const asked = new Set(match.matched.filter((x) => x.term.kind === 'attribute').map((m) => m.term.term));
+
   for (const d of STAGE_ORDER[stage]) {
-    let items: CvItem[] = [];
+    const choice = version.sections?.[d];
+    // Everything this section COULD show, relevant first; the default picks a subset.
+    let available: CvItem[];
+    let byDefault: CvItem[];
     if (d === 'attributes') {
       // Attribute claims only when backed by something other than self-reflection
-      // AND asked for by the job (concept §15 screen 14).
-      for (const m of match.matched.filter((x) => x.term.kind === 'attribute')) {
-        const a = profile.attributes[m.term.term as (typeof ATTRIBUTES)[number]];
-        if (a?.rating && a.source && a.source !== 'Self-reflection' && !hidden.has(m.term.term)) {
-          items.push({
-            id: m.term.term, dimension: 'attributes', heading: m.term.term, sub: `Based on ${a.source.toLowerCase()}`,
-            bullets: [], evidence: true, matched: true,
-          });
-        }
-      }
+      // (concept §15 screen 14). By default, only the ones the job asks for.
+      available = ATTRIBUTES.filter((name) => {
+        const a = profile.attributes[name];
+        return a?.rating && a.source && a.source !== 'Self-reflection' && !hidden.has(name);
+      })
+        .map((name) => ({
+          id: name, dimension: 'attributes' as const, heading: name,
+          sub: `${profile.attributes[name].rating} · based on ${profile.attributes[name].source.toLowerCase()}`,
+          bullets: [], evidence: true, matched: asked.has(name),
+        }))
+        .sort((a, b) => Number(b.matched) - Number(a.matched));
+      byDefault = available.filter((i) => i.matched);
     } else {
       const all = entries[d].filter((e) => !hidden.has(e.id));
       const relevant = all.filter((e) => match.relevant.has(e.id));
-      const chosen = ALWAYS_SHOWN.includes(d) ? [...relevant, ...all.filter((e) => !match.relevant.has(e.id))] : relevant;
-      items = chosen.slice(0, MAX_ITEMS[d] ?? 99).map((e) => itemFor(d, e, match.relevant.has(e.id)));
+      available = [...relevant, ...all.filter((e) => !match.relevant.has(e.id))].map((e) => itemFor(d, e, match.relevant.has(e.id)));
+      byDefault = ALWAYS_SHOWN.includes(d) ? available : available.filter((i) => i.matched);
     }
+    const cap = (list: CvItem[]) => list.slice(0, MAX_ITEMS[d] ?? 99);
+    const items = choice === 'hide' ? [] : cap(choice === 'show' ? available : byDefault);
 
     if (items.length) {
-      sections.push({ dimension: d, heading: SECTION_HEADING[d], items });
+      sections.push({ dimension: d, heading: SECTION_HEADING[d], items, shownByChoice: choice === 'show' && byDefault.length === 0 });
     } else {
-      const total = d === 'attributes' ? 0 : profile.entries[d].length;
+      const total = d === 'attributes' ? ATTRIBUTES.filter((n) => profile.attributes[n]?.rating).length : profile.entries[d].length;
       hiddenSections.push({
         dimension: d,
+        canShow: available.length > 0,
         reason:
-          total === 0
-            ? 'Nothing added yet'
-            : mode === 'verified' && d !== 'attributes' && entries[d].length === 0
-              ? 'No evidence-backed entries (Verified mode)'
-              : d === 'attributes'
-                ? 'No job-relevant attribute backed by evidence'
-                : 'Not relevant to this job',
+          choice === 'hide'
+            ? 'Hidden by you'
+            : total === 0
+              ? 'Nothing added yet'
+              : mode === 'verified' && d !== 'attributes' && entries[d].length === 0
+                ? 'No evidence-backed entries (Verified mode)'
+                : d === 'attributes' && available.length === 0
+                  ? 'Only self-rated so far; add a backed source'
+                  : 'Not relevant to this job',
       });
     }
   }

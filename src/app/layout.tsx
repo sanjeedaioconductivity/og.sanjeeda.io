@@ -85,7 +85,8 @@ export default function RootLayout({
                 {children}
             <Analytics />
             <ModernFooter/>
-            <Toaster/>
+            {/* Below the fixed header (--header-h), not hidden behind it. */}
+            <Toaster containerStyle={{ top: 'calc(var(--header-h) + 8px)' }} />
           </AuthProvider>
         </ThemeProvider>
       </body>

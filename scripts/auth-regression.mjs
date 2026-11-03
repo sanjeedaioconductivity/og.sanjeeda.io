@@ -128,7 +128,7 @@ const LEGACY_PAGES = [
   ["/management", "pgp management login"],
   ["/khudiassessment", "khudi (uses PP components)"],
   ["/Readiness-Report", "readiness report (uses PP components)"],
-  ["/FinancialOffer", "offer calculator"],
+  ["/offer-letter", "offer letter"],
   ["/cv", "3D CVs"],
   ["/auth", "portal login page"],
   ["/api-docs", "swagger"],

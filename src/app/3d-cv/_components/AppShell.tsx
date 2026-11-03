@@ -20,13 +20,16 @@ export default function AppShell({
   children,
   tabs = false,
   wide = false,
+  page = false,
 }: {
   children: React.ReactNode;
   tabs?: boolean;
   wide?: boolean;
+  /** Full content width, for two-column layouts like signup. */
+  page?: boolean;
 }) {
   return (
-    <div className={cn('mx-auto flex min-h-[calc(100vh-var(--header-h))] w-full flex-col px-4', wide ? 'max-w-2xl' : 'max-w-xl')}>
+    <div className={cn('mx-auto flex min-h-[calc(100vh-var(--header-h))] w-full flex-col px-4', page ? 'max-w-6xl' : wide ? 'max-w-2xl' : 'max-w-xl')}>
       <main className="flex-1 py-8 sm:py-10">{children}</main>
       {tabs && <BottomTabs />}
     </div>

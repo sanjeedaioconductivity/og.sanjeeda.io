@@ -1,11 +1,11 @@
 import { db } from "@/utils/mysql";
-import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
 import { OAuth2Client } from "google-auth-library";
 import { NextRequest, NextResponse } from "next/server";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { clearPortalCookie, setPortalCookie } from "@/lib/offerguide/identity";
 import { userIdOf } from "@/lib/portal/users";
+import { createPortalToken } from "@/lib/portal/token";
 
 const googleClient = new OAuth2Client(
   process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
@@ -15,6 +15,7 @@ type AuthAction =
   | "login"
   | "signup"
   | "google-login"
+  | "google-token"
   | "logout"
   | "send-code"
   | "verify-code";
@@ -44,6 +45,8 @@ type AuthRequestBody = {
   email?: string;
   password?: string;
   credential?: string;
+  /** OAuth access token from the Google popup flow ("google-token"). */
+  accessToken?: string;
   code?: string;
 };
 
@@ -55,21 +58,8 @@ function getErrorMessage(error: unknown): string {
   return "Something went wrong";
 }
 
-function createToken(user: {
-  id: number;
-  name: string;
-  email: string;
-}) {
-  return jwt.sign(
-    {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-    },
-    process.env.JWT_SECRET || "default_secret",
-    { expiresIn: "1h" }
-  );
-}
+/** One definition of the portal JWT, shared with the LinkedIn and OTP routes. */
+const createToken = createPortalToken;
 
 export async function POST(req: NextRequest) {
   try {
@@ -93,6 +83,10 @@ export async function POST(req: NextRequest) {
 
     if (action === "google-login") {
       return await handleGoogleLogin(body);
+    }
+
+    if (action === "google-token") {
+      return await handleGoogleToken(body);
     }
 
     if (action === "logout") {
@@ -268,9 +262,59 @@ async function handleGoogleLogin(body: AuthRequestBody) {
     );
   }
 
-  const name = payload.name || "Google User";
-  const email = String(payload.email).trim().toLowerCase();
-  const googleId = payload.sub;
+  return completeGoogleSignIn(payload.name || "Google User", payload.email, payload.sub);
+}
+
+/**
+ * Google sign-in from the popup (token) flow, used by custom-styled buttons that
+ * can't be Google's own rendered button (e.g. full-width ones).
+ *
+ * The browser holds an ACCESS token, not an ID token, so it is verified against
+ * Google before anything is trusted: tokeninfo must say it was issued to OUR
+ * client id (otherwise a token minted for any other app could be replayed here)
+ * and that the email is verified. Then the same account logic as google-login.
+ */
+async function handleGoogleToken(body: AuthRequestBody) {
+  const token = body.accessToken;
+  if (!token) {
+    return NextResponse.json({ message: "Google access token is required" }, { status: 400 });
+  }
+
+  const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+  const infoRes = await fetch(
+    `https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(token)}`,
+    { cache: "no-store" }
+  );
+  if (!infoRes.ok) {
+    return NextResponse.json({ message: "Invalid Google token" }, { status: 401 });
+  }
+  const info = (await infoRes.json()) as { aud?: string; azp?: string; email?: string; email_verified?: string | boolean; sub?: string };
+  if (!clientId || (info.aud !== clientId && info.azp !== clientId)) {
+    return NextResponse.json({ message: "Google token was not issued for this site" }, { status: 401 });
+  }
+  if (!info.email || String(info.email_verified) !== "true") {
+    return NextResponse.json({ message: "Google account email is not verified" }, { status: 400 });
+  }
+
+  // tokeninfo has no display name; userinfo does.
+  let name = "Google User";
+  try {
+    const userRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    });
+    if (userRes.ok) name = ((await userRes.json()) as { name?: string }).name || name;
+  } catch {
+    /* name is cosmetic; the verified email above is what matters */
+  }
+
+  return completeGoogleSignIn(name, info.email, info.sub);
+}
+
+/** Shared by both Google flows: find or create the user, issue the session. */
+async function completeGoogleSignIn(rawName: string, rawEmail: string, googleId: string | undefined) {
+  const name = rawName;
+  const email = String(rawEmail).trim().toLowerCase();
 
   const [rows] = await db.execute<UserRow[]>(
     "SELECT * FROM SanjeedaUsers WHERE email = ?",
@@ -307,7 +351,8 @@ async function handleGoogleLogin(body: AuthRequestBody) {
   } else {
     const [result] = await db.execute<ResultSetHeader>(
       "INSERT INTO SanjeedaUsers (name, email, google_id) VALUES (?, ?, ?)",
-      [name, email, googleId]
+      // mysql2 rejects undefined binds; tokeninfo normally carries sub, but be safe.
+      [name, email, googleId ?? null]
     );
 
     userId = result.insertId;

@@ -21,6 +21,8 @@ const nextConfig: NextConfig = {
       // over so old links land on the right one.
       { source: "/candidate", destination: "/pgp-access?role=candidate", permanent: true },
       { source: "/mentor", destination: "/pgp-access?role=mentor", permanent: true },
+      // The offer calculator was renamed Offer Letter and moved off its old path.
+      { source: "/FinancialOffer", destination: "/offer-letter", permanent: true },
     ];
   },
 };

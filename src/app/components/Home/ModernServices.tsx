@@ -2,6 +2,7 @@
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 import {
   A11y,
   Autoplay,
@@ -15,41 +16,55 @@ import "swiper/css";
 import "swiper/css/navigation";
 import "swiper/css/pagination";
 
-const services = [
+// `href` makes the whole card a link; a service without a page yet stays plain.
+const services: {
+  number: string;
+  name: string;
+  eyebrow: string;
+  description: string;
+  image: string;
+  href?: string;
+}[] = [
   {
     number: "01",
     name: "Personality Assessment",
     eyebrow: "Discover yourself",
     description: "A guided assessment that shows where you naturally thrive.",
-    image: "/services/assessment-full.jpg",
+    image: "/services/khudi-card-v9.jpg",
+    href: "/khudiassessment",
   },
   {
     number: "02",
     name: "3D CVs",
     eyebrow: "Tell your full story",
     description: "An AI-assisted profile that stands out beyond a resume.",
-    image: "/services/cv-full.jpg",
+    image: "/services/3d-cv-card-v4.jpg",
+    href: "/3d-cv",
   },
   {
     number: "03",
     name: "Offer Calculator",
     eyebrow: "Compare with confidence",
     description: "See the real value of every offer before you say yes.",
-    image: "/services/offer-full.jpg",
+    image: "/services/offer-letter-card-v10.jpg",
+    href: "/offer-letter",
   },
   {
     number: "04",
     name: "Mentoring Programs",
     eyebrow: "Learn from experience",
     description: "Direction and accountability from mentors who've been there.",
-    image: "/services/mentoring-full.jpg",
+    image: "/services/pgp-card-v3.jpg",
+    // Mentoring is delivered through the Professional Grooming Program (PGP).
+    href: "/pgp-access",
   },
   {
     number: "05",
-    name: "Career Counseling",
+    name: "Offer Guide",
     eyebrow: "Find your direction",
     description: "Personalized guidance that turns confusion into a clear plan.",
-    image: "/services/counseling-full.png",
+    image: "/services/offer-guide-card-v7.jpg",
+    href: "/offerguide",
   },
 ];
 
@@ -115,20 +130,20 @@ export default function ModernServices() {
           slidesPerView={1}
           breakpoints={{
             640: { slidesPerView: 2, spaceBetween: 18 },
-            1024: { slidesPerView: 4, spaceBetween: 20 },
+            1024: { slidesPerView: 3, spaceBetween: 28 },
           }}
           className="services-swiper !overflow-hidden !pb-14 lg:!overflow-visible"
         >
-          {services.map((service) => (
-            <SwiperSlide key={service.name} className="!h-auto">
-              <article className="mx-auto flex w-full max-w-[320px] flex-col">
+          {services.map((service) => {
+            const card = (
+              <article className="mx-auto flex w-full flex-col">
                 <div className="relative aspect-[3/2] w-full overflow-hidden bg-white/5">
                   <Image
                     src={service.image}
                     alt={service.name}
                     fill
-                    sizes="(max-width: 640px) 90vw, (max-width: 1024px) 45vw, 320px"
-                    className="object-cover"
+                    sizes="(max-width: 640px) 90vw, (max-width: 1024px) 45vw, 460px"
+                    className="object-cover transition-transform duration-500 group-hover:scale-105"
                   />
                   <span className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full bg-brand-ink text-xs font-bold text-white">
                     {service.number}
@@ -139,13 +154,24 @@ export default function ModernServices() {
                   <p className="mb-1 text-[10px] font-black uppercase tracking-[0.16em] text-brand-ink playful:text-brand-accent">
                     {service.eyebrow}
                   </p>
-                  <h3 className="mb-1 text-base font-black tracking-[-0.02em] text-white playful:text-pink">
+                  <h3 className="mb-1 text-base font-black tracking-[-0.02em] text-white underline-offset-4 group-hover:underline playful:text-pink">
                     {service.name}
                   </h3>
                  </div>
               </article>
-            </SwiperSlide>
-          ))}
+            );
+            return (
+              <SwiperSlide key={service.name} className="!h-auto">
+                {service.href ? (
+                  <Link href={service.href} aria-label={service.name} className="group block focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70">
+                    {card}
+                  </Link>
+                ) : (
+                  card
+                )}
+              </SwiperSlide>
+            );
+          })}
         </Swiper>
       </div>
     </section>

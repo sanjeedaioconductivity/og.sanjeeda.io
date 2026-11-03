@@ -16,7 +16,7 @@ import {
   newId,
 } from './entries';
 import { SAMPLE_BASIC_PROFILE, sampleExtracted, sampleExtras } from './sample';
-import { makeVersion, type CvVersion } from './cv';
+import { makeVersion, type CvVersion, type SectionChoices } from './cv';
 import type { JobDescription } from './jobs';
 import type { CvMode, ProfileSnapshot } from './matching';
 
@@ -149,7 +149,7 @@ interface Cv3dContextValue {
   requestMentor: () => void;
   setJob: (job: JobDescription | null) => void;
   /** Snapshots the profile into a new CV version for the current job. Returns its id. */
-  createVersion: (mode: CvMode) => string;
+  createVersion: (mode: CvMode, sections?: SectionChoices) => string;
   updateVersion: (id: string, patch: Partial<CvVersion>) => void;
   deleteVersion: (id: string) => void;
   reset: () => void;
@@ -269,10 +269,10 @@ export function Cv3dProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const createVersion = useCallback(
-    (mode: CvMode): string => {
+    (mode: CvMode, sections: SectionChoices = {}): string => {
       const job = state.currentJob;
       if (!job) throw new Error('createVersion needs a job description');
-      const version = makeVersion({ id: newId(), job, mode, stage: stageOf(state), profile: snapshotOf(state) });
+      const version = makeVersion({ id: newId(), job, mode, sections, stage: stageOf(state), profile: snapshotOf(state) });
       setState((s) => ({ ...s, versions: [version, ...s.versions] }));
       return version.id;
     },
